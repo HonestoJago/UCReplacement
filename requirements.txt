@@ -1,0 +1,32 @@
+# ──────────────────────────────────────────────────────────────
+# Core runtime dependencies (required to run the script)
+# ──────────────────────────────────────────────────────────────
+# Selenium 4.x is the current stable line and ships the
+# official Chrome DevTools Protocol (CDP) bindings we use.
+selenium>=4.14.0,<5.0.0
+
+# The driver binary (chromedriver / brave‑driver) must be on $PATH.
+# If you prefer the script to download the correct driver
+# automatically, install webdriver‑manager and use it in your
+# code (see comment in the script).  It is optional, so we
+# keep it commented for now.
+# webdriver-manager>=4.0.1,<5.0.0
+
+# ──────────────────────────────────────────────────────────────
+# Optional helpers (feel free to uncomment when you need them)
+# ──────────────────────────────────────────────────────────────
+# python-dotenv – loads a .env file automatically.
+# Very useful for keeping secrets (USERNAME, PASSWORD, PROXY…)
+# python-dotenv>=1.0.0,<2.0.0
+
+# PySide6 – only required if you later integrate the driver
+# with the Qt‑based GUI that ships with the rest of the project.
+# PySide6>=6.7.0,<7.0.0
+
+# tqdm – nice progress‑bars for long‑running loops.
+# tqdm>=4.66.0,<5.0.0
+
+# loguru – an alternative, richer logger (if you ever want to replace
+# the standard `logging` module).  The script works fine with the
+# built‑in logger, so this is purely optional.
+# loguru>=0.7.2,<0.8.0
