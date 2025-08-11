@@ -89,35 +89,13 @@ def mask_webdriver(driver) -> None:
         driver,
         """
         (function () {
-            // --- 1) Remove webdriver from Navigator.prototype -----------------
+            // Remove navigator.webdriver entirely (prototype and instance)
             try {
                 delete Navigator.prototype.webdriver;
             } catch (e) {}
-
-            // --- 2) Add instance-level getter returning undefined -------------
-            const newGetter = () => undefined;
-            Object.defineProperty(navigator, 'webdriver', {
-                get: newGetter,
-                configurable: false,
-                enumerable: false
-            });
-
-            // --- 3) Patch toString so getter appears native -------------------
-            const nativeToString = Function.prototype.toString;
-            const patchedFns = new WeakSet([newGetter]);
-            Function.prototype.toString = function () {
-                if (patchedFns.has(this)) {
-                    return 'function get webdriver() { [native code] }';
-                }
-                return nativeToString.apply(this, arguments);
-            };
-
-            // --- 4) Hide descriptor via Object.getOwnPropertyDescriptor -----
-            const nativeDescriptor = Object.getOwnPropertyDescriptor;
-            Object.getOwnPropertyDescriptor = function(obj, prop) {
-                if (prop === 'webdriver') return undefined;
-                return nativeDescriptor.apply(this, arguments);
-            };
+            try {
+                delete navigator.webdriver;
+            } catch (e) {}
         })();
         """
     )

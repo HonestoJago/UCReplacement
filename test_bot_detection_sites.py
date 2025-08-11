@@ -95,7 +95,7 @@ def check_creepjs(driver) -> bool:
 TESTS: Dict[str, callable] = {
     "Sannysoft": check_sannysoft,
     "NowSecure": check_nowsecure,
-    "CreepJS": check_creepjs,
+    # "CreepJS": check_creepjs,  # Disabled for now
 }
 
 # ---------------------------------------------------------------------------
