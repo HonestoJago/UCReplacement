@@ -19,7 +19,7 @@ load_dotenv()
 # If you moved the files into a sub‑package (`my_stealth/`) keep the
 # relative import (`from .utils …`).  For a single‑folder layout use the
 # absolute import as shown here.
-from my_stealth.utils import random_user_agent, random_viewport
+from my_stealth.utils import get_consistent_user_agent, get_consistent_viewport, get_system_timezone, get_system_timezone_offset, get_consistent_hardware, get_canvas_noise_script
 
 log = logging.getLogger(__name__)
 
@@ -50,29 +50,41 @@ def mask_webdriver(driver) -> None:
     )
 
 def mask_languages_and_plugins(driver) -> None:
+    """Set realistic, consistent language and plugin values"""
     _add_script(
         driver,
         """
         Object.defineProperty(navigator, 'languages', {
           get: () => ['en-US', 'en']
         });
+        
+        // Mock realistic plugins array (inspired by Claude's approach)
         Object.defineProperty(navigator, 'plugins', {
-          get: () => [1, 2, 3, 4, 5]
+          get: () => {
+            const plugins = [
+              {name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer'},
+              {name: 'Chromium PDF Plugin', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai'},
+              {name: 'Chrome PDF Viewer', filename: 'internal-pdf-viewer'},
+              {name: 'Native Client', filename: 'internal-nacl-plugin'}
+            ];
+            plugins.length = 4;  // Set length property for realism
+            return plugins;
+          }
         });
         """
     )
 
 def mask_viewport(driver, *, randomise: bool = True) -> None:
     """
-    Randomise the viewport **only** when `randomise` is True.
-    When you want the window to stay maximised (or you will set a fixed size later),
-    call this function with `randomise=False`.
+    Set consistent viewport size when randomise is True.
+    UC approach: Use consistent viewport per profile, not random each session.
+    When you want the window to stay maximised, call with randomise=False.
     """
     if not randomise:
         log.debug("Viewport mask disabled – keeping Chrome's original size.")
         return
 
-    w, h, dpr = random_viewport()
+    w, h, dpr = get_consistent_viewport()
     driver.set_window_size(w, h)
     _add_script(
         driver,
@@ -80,44 +92,61 @@ def mask_viewport(driver, *, randomise: bool = True) -> None:
         Object.defineProperty(window, 'devicePixelRatio', {{
           get: () => {dpr}
         }});
+        
+        // Ensure screen properties are consistent (inspired by Claude)
+        Object.defineProperty(screen, 'width', {{
+          get: () => {w}
+        }});
+        Object.defineProperty(screen, 'height', {{
+          get: () => {h}
+        }});
+        Object.defineProperty(screen, 'availWidth', {{
+          get: () => {w}
+        }});
+        Object.defineProperty(screen, 'availHeight', {{
+          get: () => {h - 40}  // Account for taskbar
+        }});
         """
     )
-    log.debug("Random viewport set to %dx%d, DPR %.1f", w, h, dpr)
+    log.debug("Consistent viewport set to %dx%d, DPR %.1f", w, h, dpr)
 
 def mask_webgl(driver) -> None:
+    """Enhanced WebGL spoofing with WebGL2 support (inspired by Claude)"""
     _add_script(
         driver,
         """
         (function () {
             const getParameter = WebGLRenderingContext.prototype.getParameter;
-            WebGLRenderingContext.prototype.getParameter = function (param) {
-                if (param === 0x1F00) {return 'Intel Inc.';}
-                if (param === 0x1F01) {return 'Intel Iris OpenGL Engine';}
-                return getParameter.apply(this, arguments);
+            
+            // Enhanced parameter overrides
+            const overrides = {
+                0x1F00: 'Intel Inc.',  // VENDOR
+                0x1F01: 'Intel Iris OpenGL Engine',  // RENDERER
+                0x1F02: '4.1 Intel Iris OpenGL Engine',  // VERSION
+                0x8B8C: 'WebGL GLSL ES 1.0 (OpenGL ES GLSL ES 1.0 Chromium)'  // SHADING_LANGUAGE_VERSION
             };
+            
+            function getParameterProxy(original) {
+                return function(param) {
+                    if (overrides.hasOwnProperty(param)) {
+                        return overrides[param];
+                    }
+                    return original.apply(this, arguments);
+                };
+            }
+            
+            // Apply to both WebGL 1 and WebGL 2
+            WebGLRenderingContext.prototype.getParameter = getParameterProxy(WebGLRenderingContext.prototype.getParameter);
+            if (window.WebGL2RenderingContext) {
+                WebGL2RenderingContext.prototype.getParameter = getParameterProxy(WebGL2RenderingContext.prototype.getParameter);
+            }
         })();
         """
     )
 
 def mask_canvas(driver) -> None:
-    _add_script(
-        driver,
-        """
-        (function () {
-            const toDataURL = HTMLCanvasElement.prototype.toDataURL;
-            HTMLCanvasElement.prototype.toDataURL = function () {
-                const ctx = this.getContext('2d');
-                if (ctx) {
-                    const img = ctx.getImageData(0, 0, this.width, this.height);
-                    const i = Math.floor(Math.random() * img.data.length);
-                    img.data[i] = (img.data[i] + Math.floor(Math.random() * 256)) % 256;
-                    ctx.putImageData(img, 0, 0);
-                }
-                return toDataURL.apply(this, arguments);
-            };
-        })();
-        """
-    )
+    """Enhanced canvas fingerprinting protection with Claude's improved approach."""
+    _add_script(driver, get_canvas_noise_script())
 
 def mask_audio_context(driver) -> None:
     _add_script(
@@ -133,22 +162,29 @@ def mask_audio_context(driver) -> None:
     )
 
 def mask_hardware_and_timezone(driver) -> None:
-    import random
-    tz = random.choice([
-        "America/New_York", "America/Los_Angeles",
-        "Europe/London", "Europe/Berlin",
-        "Asia/Tokyo", "Asia/Singapore"
-    ])
-    offset = random.choice([-60, 0, 60, 120, 180, 240, 300, 360])
-    # cores / RAM
+    """
+    Use consistent system-based hardware and timezone info.
+    UC approach: Match actual system specs rather than random values.
+    """
+    # Get consistent hardware specs (same per profile)
+    cpu_cores, memory_gb = get_consistent_hardware()
+    
+    # Get actual system timezone (most realistic)
+    tz = get_system_timezone()
+    
+    # Calculate timezone offset using improved method (handles DST)
+    offset = get_system_timezone_offset()
+    
+    # Set consistent hardware specs
     _add_script(
         driver,
-        """
-        Object.defineProperty(navigator, 'hardwareConcurrency', {get:()=>8});
-        Object.defineProperty(navigator, 'deviceMemory', {get:()=>8});
+        f"""
+        Object.defineProperty(navigator, 'hardwareConcurrency', {{get:()=>{cpu_cores}}});
+        Object.defineProperty(navigator, 'deviceMemory', {{get:()=>{memory_gb}}});
         """
     )
-    # timezone
+    
+    # Set system timezone (not random)
     _add_script(
         driver,
         f"""
@@ -164,20 +200,33 @@ def mask_hardware_and_timezone(driver) -> None:
         window.Date = MockDate;
         """
     )
-    log.debug("Hardware & timezone spoofed (tz=%s, offset=%d)", tz, offset)
+    log.debug("Consistent hardware & timezone set (tz=%s, offset=%d, cores=%d, RAM=%dGB)", 
+              tz, offset, cpu_cores, memory_gb)
 
 def mask_misc(driver) -> None:
+    """Enhanced misc property spoofing (inspired by Claude's approach)"""
     _add_script(
         driver,
         """
-        const origQuery = navigator.permissions.query;
-        navigator.permissions.__proto__.query = function(p) {
-            if (['notifications','geolocation'].includes(p.name)) {
-                return Promise.resolve({state:'denied'});
+        // Permissions - consistent denials for privacy-sensitive permissions
+        const originalQuery = navigator.permissions.query;
+        navigator.permissions.__proto__.query = function(parameters) {
+            const deniedPermissions = ['notifications', 'geolocation', 'camera', 'microphone'];
+            if (deniedPermissions.includes(parameters.name)) {
+                return Promise.resolve({state: 'denied'});
             }
-            return origQuery.apply(this, arguments);
+            return originalQuery.apply(this, arguments);
         };
-        Object.defineProperty(navigator, 'maxTouchPoints', {get:()=>0});
+        
+        // Touch - consistent with desktop environment
+        Object.defineProperty(navigator, 'maxTouchPoints', {
+            get: () => 0
+        });
+        
+        // Platform - should match user agent (Windows)
+        Object.defineProperty(navigator, 'platform', {
+            get: () => 'Win32'  // Consistent with Windows UA
+        });
         """
     )
 
@@ -239,7 +288,7 @@ def create_stealth_driver(*,
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-dev-shm-usage")
     opts.add_argument("--start-maximized")          # ask Chrome to start maximised
-    opts.add_argument(f"user-agent={random_user_agent()}")
+    opts.add_argument(f"user-agent={get_consistent_user_agent()}")
 
     if headless:
         opts.add_argument("--headless=new")
