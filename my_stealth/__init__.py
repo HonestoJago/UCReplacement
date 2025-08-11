@@ -39,6 +39,7 @@ Usage:
 import os
 import platform
 from .driver_factory import create_stealth_driver, get_driver
+from .patcher import get_patched_chromedriver, ChromeDriverPatcher
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 
 # UC-compatible API exports
@@ -95,6 +96,8 @@ __all__ = [
     'ChromeOptions', 
     'TARGET_VERSION', 
     'create_driver',
+    'get_patched_chromedriver',
+    'ChromeDriverPatcher',
     'find_chrome_executable',
     '__version__'
 ]

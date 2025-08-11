@@ -6,9 +6,15 @@ from typing import Optional
 from dotenv import load_dotenv
 
 from selenium import webdriver
+# Selenium helpers
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
+
+# Optional auto-downloader (fallback when our own patcher is not used)
 from webdriver_manager.chrome import ChromeDriverManager
+
+# 🆕  Stealth patcher – download **and** patch a compatible driver in one go
+from my_stealth.patcher import get_patched_chromedriver
 
 # Load environment variables
 load_dotenv()
@@ -331,20 +337,28 @@ def create_stealth_driver(*,
 
     # Driver service – you can enable webdriver‑manager here if you wish
     if driver_path:
+        # User supplied an explicit chromedriver – honour it *without* interference.
         service = Service(executable_path=driver_path)
     else:
-        # Auto‑download the correct ChromeDriver version:
-        # Note: BRAVE_VERSION from .env is used for reference/logging but webdriver-manager
-        # will auto-detect the actual browser version and download the matching driver
-        chrome_version = os.getenv("BRAVE_VERSION")
-        if chrome_version:
-            log.info(f"BRAVE_VERSION environment variable is set to: {chrome_version}")
-            log.info("WebDriver Manager will auto-detect actual browser version and download matching ChromeDriver")
-        else:
-            log.info("No BRAVE_VERSION set, auto-detecting Chrome version and using compatible ChromeDriver")
-        
-        service = Service(ChromeDriverManager().install())
-        log.info("Using webdriver-manager to auto-download compatible ChromeDriver")
+        # Default & *recommended* path: download a **patched** driver that no longer
+        # injects the easily detectable `cdc_*` variables.  Fallback to
+        # webdriver-manager only when our patcher fails (rare network issues).
+
+        try:
+            patched_path = get_patched_chromedriver()
+            service = Service(patched_path)
+            log.info("Using patched ChromeDriver: %s", patched_path)
+        except Exception as exc:
+            log.warning("get_patched_chromedriver failed (%s) – falling back to webdriver-manager", exc)
+
+            chrome_version = os.getenv("BRAVE_VERSION")
+            if chrome_version:
+                log.info("BRAVE_VERSION=%s – webdriver-manager will attempt to match it", chrome_version)
+            else:
+                log.info("No BRAVE_VERSION set – webdriver-manager will auto-detect the browser version")
+
+            service = Service(ChromeDriverManager().install())
+            log.info("Using *unpatched* driver from webdriver-manager – stealth might be reduced")
 
     driver = webdriver.Chrome(service=service, options=opts)
 
