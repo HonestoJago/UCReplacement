@@ -34,7 +34,7 @@ log = logging.getLogger(__name__)
 # 2️⃣  Import from our stealth package
 # -----------------------------------------------------------------
 from my_stealth.driver_factory import get_driver
-from my_stealth.cookies import load_cookies, save_cookies
+# Note: No cookie imports needed - persistent profiles handle cookies automatically
 
 # -----------------------------------------------------------------
 # 3️⃣  Environment-based configuration
@@ -53,8 +53,8 @@ PROFILE_DIR = os.path.join(BRAVE_USER_DATA_DIR, BRAVE_PROFILE_NAME)
 # Create the profile directory if it doesn't exist
 os.makedirs(PROFILE_DIR, exist_ok=True)
 
-COOKIES_JSON = os.path.join(PROFILE_DIR, "cookies.json")
 BRAVE_VERSION = os.getenv("BRAVE_VERSION", "139")
+# Note: No COOKIES_JSON needed - persistent profiles handle cookies automatically
 
 log.info(f"Using Brave user data directory: {BRAVE_USER_DATA_DIR}")
 log.info(f"Using Brave profile name: {BRAVE_PROFILE_NAME}")
@@ -287,13 +287,13 @@ def main() -> None:
         maximise=True,
     )
 
-    # Load cookies from previous sessions
-    load_cookies(driver, COOKIES_JSON)
-
-    # Verify stealth is working
+    # Verify stealth is working first
     driver.get("about:blank")
     is_stealth = driver.execute_script("return navigator.webdriver === undefined;")
     log.info(f"Navigator.webdriver hidden: {is_stealth}")
+
+    # Note: Using persistent Brave profile - cookies, login sessions, and browsing 
+    # data are automatically available from your real browser profile!
 
     # Test results tracking
     test_results = {}
@@ -321,8 +321,9 @@ def main() -> None:
         total = len(test_results)
         log.info(f"\nOverall: {passed}/{total} tests passed")
         
-        # Save cookies for next session
-        save_cookies(driver, COOKIES_JSON)
+        # Note: No need to save cookies manually - persistent Brave profile 
+        # automatically saves all browsing data, cookies, and session state!
+        log.info("All browsing data automatically saved to persistent Brave profile")
         
     except Exception as e:
         log.error(f"Test execution failed: {e}")

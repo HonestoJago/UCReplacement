@@ -19,7 +19,7 @@ load_dotenv()
 # If you moved the files into a sub‑package (`my_stealth/`) keep the
 # relative import (`from .utils …`).  For a single‑folder layout use the
 # absolute import as shown here.
-from my_stealth.utils import get_consistent_user_agent, get_consistent_viewport, get_system_timezone, get_system_timezone_offset, get_consistent_hardware, get_canvas_noise_script
+from my_stealth.utils import get_consistent_user_agent, get_consistent_viewport, get_system_timezone, get_system_timezone_offset, get_consistent_hardware
 
 log = logging.getLogger(__name__)
 
@@ -144,9 +144,8 @@ def mask_webgl(driver) -> None:
         """
     )
 
-def mask_canvas(driver) -> None:
-    """Enhanced canvas fingerprinting protection with Claude's improved approach."""
-    _add_script(driver, get_canvas_noise_script())
+# Canvas protection removed - UC approach: let canvas render naturally
+# Consistent fingerprints = same "device" = safer for account security
 
 def mask_audio_context(driver) -> None:
     _add_script(
@@ -240,7 +239,7 @@ def apply_stealth(driver, *, randomise_viewport: bool = True) -> None:
     mask_languages_and_plugins(driver)
     mask_viewport(driver, randomise=randomise_viewport)   # <-- respects the flag
     mask_webgl(driver)
-    mask_canvas(driver)
+    # mask_canvas(driver) - REMOVED: UC approach is to let canvas render naturally
     mask_audio_context(driver)
     mask_hardware_and_timezone(driver)
     mask_misc(driver)
