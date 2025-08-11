@@ -53,7 +53,9 @@ BRAVE_VERSION=139
 
 ## 📖 Complete API Reference
 
-### Basic Driver Creation
+### Core Driver API
+
+#### Basic Driver Creation
 
 ```python
 from my_stealth.driver_factory import get_driver
@@ -94,6 +96,104 @@ driver = get_driver(
     apply_viewport=True,               # Apply consistent viewport per profile
 )
 ```
+
+### Enhanced WebElement Methods
+
+```python
+from my_stealth import enhance_driver_elements, find_elements_recursive, EnhancedWebElement
+
+# Auto-enhance all driver elements
+driver = uc.Chrome()
+enhance_driver_elements(driver)
+
+# Now all elements have enhanced methods
+element = driver.find_element(By.ID, "button")
+element.click_safe()  # Stealth clicking with human-like timing
+element.type_human("text", typing_speed=0.1)  # Human-like typing
+element.hover(duration=2.0)  # Natural mouse hover
+element.scroll_to()  # Smooth scroll into view
+
+# Enhanced DOM traversal
+children = element.children(tag="div", recursive=True)
+for child in children:
+    print(f"Child element: {child.tag_name}")
+
+# Cross-frame element finding
+all_buttons = find_elements_recursive(driver, By.TAG_NAME, "button")
+print(f"Found {len(all_buttons)} buttons across all frames")
+```
+
+#### Enhanced Element Methods Reference
+
+| Method | Description | Parameters |
+|--------|-------------|------------|
+| `click_safe()` | Stealth clicking with human timing | `pause_before=None, pause_after=None` |
+| `type_human()` | Human-like typing with mistakes | `text, typing_speed=0.1, mistakes=True` |
+| `hover()` | Natural mouse hover | `duration=None` |
+| `scroll_to()` | Smooth scroll into view | `behavior='smooth'` |
+| `children()` | Get child elements | `tag=None, recursive=False` |
+| `wait_for_clickable()` | Wait for element to be clickable | `timeout=10` |
+
+### CDP Event Monitoring System
+
+```python
+from my_stealth import enable_cdp_events, add_cdp_listener, CDPEventMonitor
+
+# Method 1: Simple UC-style API
+driver = uc.Chrome()
+monitor = enable_cdp_events(driver)
+
+# Add event listeners
+def log_request(params):
+    request = params['request']
+    print(f"🌐 {request['method']} {request['url']}")
+
+def log_response(params):
+    response = params['response']
+    print(f"📥 {response['status']} {response['url']}")
+
+add_cdp_listener(driver, 'Network.requestWillBeSent', log_request)
+add_cdp_listener(driver, 'Network.responseReceived', log_response)
+add_cdp_listener(driver, '*', lambda event: print(f"Event: {event['method']}"))  # All events
+
+# Method 2: Advanced monitoring with analysis
+monitor = CDPEventMonitor(driver)
+monitor.start_monitoring(capture_events=True)
+
+# Navigate and capture events
+driver.get("https://example.com")
+time.sleep(3)
+
+# Analyze captured data
+requests = monitor.get_network_requests(filter_url="api")
+responses = monitor.get_network_responses(filter_url="json")
+
+print(f"API requests: {len(requests)}")
+for req in requests:
+    print(f"  {req['method']} {req['url']}")
+
+monitor.stop_monitoring()
+```
+
+#### CDP Event Methods Reference
+
+| Function | Description | Parameters |
+|----------|-------------|------------|
+| `enable_cdp_events(driver)` | Enable CDP monitoring | Returns `CDPEventMonitor` |
+| `add_cdp_listener(driver, event, callback)` | Add event listener | `event` (str or '*'), `callback` (function) |
+| `CDPEventMonitor(driver)` | Create advanced monitor | Manual monitoring control |
+
+#### CDPEventMonitor Methods
+
+| Method | Description | Parameters |
+|--------|-------------|------------|
+| `start_monitoring()` | Begin event capture | `capture_events=True` |
+| `stop_monitoring()` | Stop event capture | None |
+| `add_listener()` | Add event listener | `event, callback` |
+| `remove_listener()` | Remove event listener | `event, callback` |
+| `get_network_requests()` | Get captured requests | `filter_url=None` |
+| `get_network_responses()` | Get captured responses | `filter_url=None` |
+| `clear_events()` | Clear event history | None |
 
 ## 🛡️ Stealth Features
 
@@ -849,7 +949,35 @@ your_project/
 └── your_automation.py     # Your automation scripts
 ```
 
-## 🔍 Detection Testing
+## 🧪 Testing Suite
+
+Comprehensive test scripts are provided to validate all functionality:
+
+### Quick Test - All Features
+```bash
+# Run comprehensive test of all major features
+python test_comprehensive_features.py
+```
+
+### Individual Feature Tests
+```bash
+# Test CDP event monitoring
+python test_cdp_events.py
+
+# Test enhanced WebElement methods  
+python test_enhanced_elements.py
+
+# Test browser-side fetch requests
+python test_browser_fetch.py
+
+# Test human-like interactions
+python test_human_interactions.py
+
+# Test bot detection evasion
+python test_bot_detection_sites.py
+```
+
+### Manual Detection Testing
 
 Test your stealth setup against common detection methods:
 
@@ -881,6 +1009,111 @@ for site in test_sites:
 driver.quit()
 ```
 
+## 📚 Complete API Reference
+
+### Core Functions
+
+| Function | Module | Description |
+|----------|--------|--------------|
+| `uc.Chrome()` | `__init__` | Main driver constructor (UC-compatible) |
+| `create_driver()` | `driver_factory` | Advanced driver creation with all options |
+| `get_driver()` | `driver_factory` | Alias for create_driver() |
+| `get_patched_chromedriver()` | `patcher` | Download and patch ChromeDriver binary |
+| `find_chrome_executable()` | `__init__` | Auto-detect browser executable paths |
+
+### CDP Event Monitoring
+
+| Function | Description | Returns |
+|----------|-------------|----------|
+| `enable_cdp_events(driver)` | Enable basic CDP monitoring | `CDPEventMonitor` |
+| `add_cdp_listener(driver, event, callback)` | Add event listener (UC-style) | `None` |
+| `CDPEventMonitor(driver)` | Create advanced monitor | Monitor instance |
+
+### CDPEventMonitor Methods
+
+| Method | Parameters | Description |
+|--------|------------|-------------|
+| `start_monitoring()` | `capture_events=True` | Begin event capture |
+| `stop_monitoring()` | None | Stop event capture |
+| `add_listener()` | `event, callback` | Add event listener |
+| `remove_listener()` | `event, callback` | Remove specific listener |
+| `get_network_requests()` | `filter_url=None` | Get captured HTTP requests |
+| `get_network_responses()` | `filter_url=None` | Get captured HTTP responses |
+| `clear_events()` | None | Clear event history |
+
+### Enhanced WebElements
+
+| Function | Description | Returns |
+|----------|-------------|----------|
+| `enhance_driver_elements(driver)` | Auto-enhance all driver elements | `None` |
+| `find_elements_recursive(driver, by, value)` | Cross-frame element search | `List[EnhancedWebElement]` |
+| `EnhancedWebElement(element, driver)` | Wrap standard element | Enhanced element |
+
+### EnhancedWebElement Methods
+
+| Method | Parameters | Description |
+|--------|------------|-------------|
+| `click_safe()` | `pause_before=None, pause_after=None` | Human-like clicking |
+| `type_human()` | `text, typing_speed=0.1, mistakes=True` | Realistic typing |
+| `hover()` | `duration=None` | Natural mouse hover |
+| `scroll_to()` | `behavior='smooth'` | Smooth scroll to element |
+| `children()` | `tag=None, recursive=False` | Get child elements |
+| `wait_for_clickable()` | `timeout=10` | Wait for element to be clickable |
+
+### Stealth Utilities
+
+| Function | Module | Description |
+|----------|--------|--------------|
+| `get_consistent_user_agent()` | `utils` | Get consistent UA for system |
+| `get_consistent_viewport()` | `utils` | Get consistent viewport per profile |
+| `get_system_timezone()` | `utils` | Get actual system timezone |
+| `get_consistent_hardware()` | `utils` | Get consistent CPU/RAM specs |
+| `get_profile_fingerprint()` | `utils` | Complete fingerprint for profile |
+
+### Cookie Management
+
+| Function | Module | Parameters | Description |
+|----------|--------|------------|-------------|
+| `save_cookies()` | `cookies` | `driver, file_path` | Save cookies to JSON |
+| `load_cookies()` | `cookies` | `driver, file_path` | Load cookies from JSON |
+
+### Configuration Options
+
+All options for `create_driver()` / `uc.Chrome()`:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `proxy` | `str` | `None` | Proxy URL |
+| `profile_path` | `str` | `None` | Browser profile directory |
+| `profile_name` | `str` | `None` | Specific profile name |
+| `binary_path` | `str` | `None` | Custom browser executable |
+| `driver_path` | `str` | `None` | Custom ChromeDriver path |
+| `enable_stealth` | `bool` | `True` | Apply stealth patches |
+| `maximise` | `bool` | `True` | Maximize window on startup |
+| `apply_viewport` | `bool` | `True` | Apply consistent viewport |
+
+### Environment Variables
+
+| Variable | Description | Example |
+|----------|-------------|----------|
+| `BRAVE_BINARY_PATH` | Path to Brave executable | `/path/to/brave` |
+| `BRAVE_USER_DATA_DIR` | User data directory | `/path/to/profile` |
+| `BRAVE_PROFILE_NAME` | Profile name within user data | `Default` |
+| `BRAVE_VERSION` | Browser version reference | `139` |
+
+### Event Types (CDP)
+
+Common CDP event types for `add_cdp_listener()`:
+
+| Event | Description |
+|-------|-------------|
+| `'Network.requestWillBeSent'` | HTTP request initiated |
+| `'Network.responseReceived'` | HTTP response received |
+| `'Network.dataReceived'` | Response data chunk |
+| `'Runtime.consoleAPICalled'` | Console.log/error/warn |
+| `'Security.certificateError'` | SSL/TLS certificate issues |
+| `'*'` | All events (wildcard) |
+
 ## 📊 Performance Tips
 
 - **Profile reuse**: Use persistent profiles to avoid setup time and maintain sessions
@@ -888,6 +1121,129 @@ driver.quit()
 - **Proxy rotation**: Change proxies between sessions if needed
 - **Minimize stealth overhead**: Disable stealth features you don't need
 - **Connection pooling**: Reuse the same profile for multiple automation sessions
+
+## 🔧 Advanced Usage Examples
+
+### CDP Event Monitoring Example
+```python
+import my_stealth as uc
+from my_stealth import enable_cdp_events, add_cdp_listener
+
+# Create driver with CDP monitoring
+driver = uc.Chrome(profile_path="./my_profile")
+monitor = enable_cdp_events(driver)
+
+# Monitor all network traffic
+def log_request(params):
+    request = params['request']
+    print(f"🌐 {request['method']} {request['url']}")
+
+def log_response(params):
+    response = params['response']
+    print(f"📥 {response['status']} {response['url']}")
+
+add_cdp_listener(driver, 'Network.requestWillBeSent', log_request)
+add_cdp_listener(driver, 'Network.responseReceived', log_response)
+
+# Browse and monitor
+driver.get("https://example.com")
+time.sleep(5)
+
+# Analyze captured data
+requests = monitor.get_network_requests()
+print(f"Captured {len(requests)} requests")
+```
+
+### Enhanced Elements Example
+```python
+import my_stealth as uc
+from my_stealth import enhance_driver_elements, find_elements_recursive
+from selenium.webdriver.common.by import By
+
+# Create driver with enhanced elements
+driver = uc.Chrome()
+enhance_driver_elements(driver)
+
+# All elements now have enhanced methods
+driver.get("https://www.google.com")
+search_box = driver.find_element(By.NAME, "q")
+
+# Use enhanced methods
+search_box.click_safe(pause_before=0.3, pause_after=0.2)
+search_box.type_human("my search query", typing_speed=0.12, mistakes=True)
+search_box.hover(duration=1.5)
+
+# Cross-frame element finding
+all_buttons = find_elements_recursive(driver, By.TAG_NAME, "button")
+print(f"Found {len(all_buttons)} buttons across all frames")
+
+# Natural interactions
+for button in all_buttons[:3]:
+    button.hover(duration=0.8)
+    time.sleep(0.5)
+```
+
+### Game Bot API Example
+```python
+import my_stealth as uc
+import json
+import time
+
+# Create driver for game automation
+driver = uc.Chrome(
+    profile_path="./game_profile",
+    maximise=True
+)
+
+# Navigate to game
+driver.get("https://yourgame.com/play")
+time.sleep(5)
+
+# Switch to game frame if needed
+iframes = driver.find_elements("tag name", "iframe")
+if iframes:
+    driver.switch_to.frame(iframes[0])
+
+# Enable CDP for API calls
+driver.execute_cdp_cmd("Runtime.enable", {})
+
+# Send authentic game API request
+api_payload = {
+    "action": "place_bet",
+    "amount": 100,
+    "game_id": "slot_001"
+}
+
+result = driver.execute_cdp_cmd("Runtime.evaluate", {
+    "expression": f"""
+    (async () => {{
+        try {{
+            const response = await fetch('/api/game/action', {{
+                method: 'POST',
+                headers: {{
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }},
+                body: JSON.stringify({json.dumps(api_payload)}),
+                credentials: 'include'
+            }});
+            const data = await response.json();
+            return {{ success: true, data: data }};
+        }} catch (error) {{
+            return {{ success: false, error: error.message }};
+        }}
+    }})()
+    """,
+    "awaitPromise": True,
+    "returnByValue": True
+})
+
+api_result = result["result"]["value"]
+if api_result["success"]:
+    print(f"🎮 Game action successful: {api_result['data']}")
+else:
+    print(f"❌ Game action failed: {api_result['error']}")
+```
 
 ## 🐛 Troubleshooting
 
@@ -931,6 +1287,29 @@ print(f"Webdriver hidden: {webdriver_hidden}")
 print(f"User agent: {user_agent}")
 ```
 
+### New Test Scripts Issues
+
+#### ModuleNotFoundError: No module named 'my_stealth'
+```bash
+# Make sure you're in the project root directory
+cd /path/to/UCReplacement
+
+# Run tests from the root where my_stealth/ folder is located
+python test_comprehensive_features.py
+```
+
+#### Import Errors in Module Files
+The module files (`my_stealth/*.py`) no longer contain test code that causes import loops. All test code has been moved to dedicated test scripts in the root directory.
+
+#### Test Profile Permissions
+```bash
+# If profile creation fails, ensure write permissions
+chmod 755 ./test_profiles/
+
+# Or use a different test profile path
+export TEST_PROFILE_PATH="/tmp/my_stealth_test"
+```
+
 ## 🆚 UC Compatibility
 
 This package is designed as a drop-in replacement for `undetected_chromedriver`:
@@ -947,18 +1326,28 @@ driver = uc.Chrome()
 
 ### UC Features Supported
 - ✅ Basic `Chrome()` constructor
-- ✅ `ChromeOptions` compatibility
+- ✅ `ChromeOptions` compatibility  
 - ✅ Profile management
 - ✅ Stealth detection evasion
 - ✅ Automatic driver management
+- ✅ CDP event monitoring (`enable_cdp_events`, `add_cdp_listener`)
+- ✅ Enhanced WebElement methods (`click_safe`, `children`, etc.)
+- ✅ Cross-frame element finding (`find_elements_recursive`)
+- ✅ Binary patching with CDC replacement
 
 ### Improvements Over UC
 - ✅ **Better maintained** - Active development vs abandoned UC
-- ✅ **Brave support** - Privacy-focused browser
+- ✅ **Brave support** - Privacy-focused browser with auto-detection
 - ✅ **Environment config** - Easy `.env` setup
-- ✅ **Type hints** - Better IDE support
-- ✅ **Modular design** - Easier to extend and debug
-- ✅ **Configurable stealth** - Enable/disable features as needed
+- ✅ **Type hints** - Full type safety for better IDE support
+- ✅ **Modular design** - Clean architecture, easier to extend
+- ✅ **Enhanced CDP system** - Thread-safe, more features than UC
+- ✅ **Advanced element methods** - More human-like interactions
+- ✅ **Comprehensive testing** - Full test suite included
+- ✅ **No headless mode** - Eliminates major detection vector
+- ✅ **Consistent fingerprinting** - Safer for persistent accounts
+- ✅ **Better error handling** - Robust recovery mechanisms
+- ✅ **Performance monitoring** - Built-in performance tracking
 
 ## 📄 License
 

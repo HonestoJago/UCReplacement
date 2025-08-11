@@ -40,6 +40,8 @@ import os
 import platform
 from .driver_factory import create_stealth_driver, get_driver
 from .patcher import get_patched_chromedriver, ChromeDriverPatcher
+from .cdp_events import enable_cdp_events, add_cdp_listener, CDPEventMonitor
+from .enhanced_elements import enhance_driver_elements, find_elements_recursive, EnhancedWebElement
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 
 # UC-compatible API exports
@@ -99,5 +101,11 @@ __all__ = [
     'get_patched_chromedriver',
     'ChromeDriverPatcher',
     'find_chrome_executable',
+    'enable_cdp_events',
+    'add_cdp_listener', 
+    'CDPEventMonitor',
+    'enhance_driver_elements',
+    'find_elements_recursive',
+    'EnhancedWebElement',
     '__version__'
 ]

@@ -1,7 +1,24 @@
 # test_human_interactions.py
 """
-Human-like interaction tests for the stealth browser.
-Tests realistic typing, clicking, and form interactions.
+Human-like interaction tests for the stealth browser using Enhanced Elements.
+
+MAJOR REFACTOR: This file has been updated to use my_stealth's Enhanced Elements
+system instead of custom ActionChains-based interactions.
+
+KEY CHANGES:
+1. Replaced ActionChains with JavaScript-based methods to avoid Chrome's shadow DOM conflicts
+2. All element interactions now use enhanced methods (click_safe, type_human, hover)
+3. Enhanced elements automatically handle window sizing and Chrome inspection issues
+4. More reliable and stealthy than ActionChains which trigger Chrome's visual feedback
+
+BENEFITS OF REFACTOR:
+- Eliminates "Cannot take screenshot with 0 width" errors
+- Avoids "no such shadow root" conflicts with Chrome's internal UI
+- Uses JavaScript events that are indistinguishable from real user interactions
+- Maintains human-like timing while being more reliable
+- Automatic fallbacks for different browsers and configurations
+
+Tests realistic typing, clicking, and form interactions with enhanced stealth.
 """
 import logging
 import os
@@ -33,7 +50,8 @@ log = logging.getLogger(__name__)
 # -----------------------------------------------------------------
 # 2️⃣  Import from our stealth package
 # -----------------------------------------------------------------
-from my_stealth.driver_factory import get_driver
+import my_stealth as uc
+from my_stealth import enhance_driver_elements, EnhancedWebElement
 # Note: No cookie imports needed - persistent profiles handle cookies automatically
 
 # -----------------------------------------------------------------
@@ -75,55 +93,51 @@ def human_delay(min_sec: float = 0.5, max_sec: float = 2.0) -> None:
 
 def human_type(element, text: str, typing_speed: float = 0.1) -> None:
     """
-    Type text character by character with human-like timing variations.
+    Type text using enhanced elements' JavaScript-based typing method.
+    
+    REFACTOR: Replaced custom character-by-character typing with our enhanced
+    elements' type_human() method which uses JavaScript events to avoid
+    Chrome's shadow DOM conflicts while maintaining human-like characteristics.
     
     Args:
-        element: WebElement to type into
+        element: EnhancedWebElement to type into
         text: Text to type
         typing_speed: Base delay between characters (seconds)
     """
-    log.info(f"Typing text: '{text}' with human-like timing")
+    log.info(f"Typing text: '{text}' with enhanced human-like typing")
     
-    for char in text:
-        element.send_keys(char)
-        
-        # Add realistic typing variations
-        if char == ' ':
-            # Slightly longer pause after spaces
-            delay = random.uniform(typing_speed * 1.5, typing_speed * 3.0)
-        elif char in '.,!?;:':
-            # Pause after punctuation
-            delay = random.uniform(typing_speed * 2.0, typing_speed * 4.0)
-        else:
-            # Normal character typing speed with variation
-            delay = random.uniform(typing_speed * 0.5, typing_speed * 2.0)
-        
-        time.sleep(delay)
+    # Use our enhanced element's JavaScript-based typing with realistic mistakes
+    element.type_human(text, typing_speed=typing_speed, mistakes=True)
 
 def human_click(driver, element) -> None:
     """
-    Perform a human-like click with mouse movement.
+    Perform a human-like click using enhanced elements' JavaScript-based method.
+    
+    REFACTOR: Replaced ActionChains-based clicking (which triggers Chrome's
+    visual feedback systems) with our enhanced elements' click_safe() method
+    that uses JavaScript execution to avoid shadow DOM conflicts.
     """
-    log.info("Performing human-like click")
+    log.info("Performing enhanced human-like click")
     
-    # Move to element first (creates more realistic behavior)
-    actions = ActionChains(driver)
-    actions.move_to_element(element)
-    actions.pause(random.uniform(0.1, 0.3))  # Brief pause before clicking
-    actions.click()
-    actions.perform()
-    
-    # Small delay after click
-    human_delay(0.2, 0.5)
+    # Use our enhanced element's JavaScript-based clicking
+    # This includes natural timing and avoids Chrome's screenshot/inspection systems
+    element.click_safe(pause_before=random.uniform(0.1, 0.3), 
+                      pause_after=random.uniform(0.2, 0.5))
 
 def wait_and_find(driver, by, value, timeout=10):
     """
-    Wait for element to be present and return it.
+    Wait for element to be present and return enhanced element.
+    
+    REFACTOR: Now returns EnhancedWebElement instead of regular WebElement.
+    This ensures all found elements automatically have our JavaScript-based
+    interaction methods (click_safe, type_human, hover, etc.) available.
     """
     try:
         element = WebDriverWait(driver, timeout).until(
             EC.presence_of_element_located((by, value))
         )
+        # Note: Don't manually wrap with EnhancedWebElement here since driver
+        # is already enhanced via enhance_driver_elements() - it returns enhanced elements automatically
         return element
     except TimeoutException:
         log.error(f"Element not found: {by}={value} within {timeout} seconds")
@@ -241,40 +255,35 @@ def test_form_interaction(driver):
         driver.switch_to.default_content()
 
 def test_mouse_movements(driver):
-    """Test 3: Natural mouse movements and hovering"""
-    log.info("🖱️ TEST 3: Mouse Movement Test")
+    """Test 3: Natural mouse movements and hovering using enhanced elements"""
+    log.info("🖱️ TEST 3: Enhanced Mouse Movement Test")
     
     driver.get("https://www.google.com")
     human_delay(2.0, 3.0)
     
     try:
-        # Find multiple elements to hover over
+        # Find multiple elements to hover over using enhanced elements
+        # REFACTOR: driver.find_elements now returns EnhancedWebElement automatically
         links = driver.find_elements(By.TAG_NAME, "a")[:5]  # First 5 links
         
         if links:
-            actions = ActionChains(driver)
-            
             for i, link in enumerate(links):
-                log.info(f"Hovering over link {i+1}")
+                log.info(f"Hovering over link {i+1} with enhanced JavaScript method")
                 
-                # Move to element with a natural pause
-                actions.move_to_element(link)
-                actions.pause(random.uniform(0.5, 1.5))
-                actions.perform()
-                
-                # Reset actions for next iteration
-                actions = ActionChains(driver)
+                # REFACTOR: Use enhanced element's JavaScript-based hover method
+                # This avoids ActionChains and Chrome's visual feedback systems
+                link.hover(duration=random.uniform(0.5, 1.5))
                 
                 human_delay(0.8, 1.5)
             
-            log.info("✅ Mouse movement test completed")
+            log.info("✅ Enhanced mouse movement test completed")
             return True
         else:
             log.warning("❌ No links found for mouse movement test")
             return False
             
     except Exception as e:
-        log.error(f"❌ Mouse movement test failed: {e}")
+        log.error(f"❌ Enhanced mouse movement test failed: {e}")
         return False
 
 # -----------------------------------------------------------------
@@ -314,12 +323,17 @@ def main() -> None:
     """Run all human-like interaction tests"""
     log.info("🚀 Starting Human-like Interaction Tests")
     
-    # Create stealth driver - always visible for maximum stealth
-    driver = get_driver(
+    # Create stealth driver with enhanced elements - always visible for maximum stealth
+    driver = uc.Chrome(
         profile_path=BRAVE_USER_DATA_DIR,
         profile_name=BRAVE_PROFILE_NAME,
         maximise=True,
     )
+    
+    # REFACTOR: Enable enhanced elements for JavaScript-based interactions
+    # This replaces ActionChains with shadow DOM-safe JavaScript methods
+    enhance_driver_elements(driver)
+    log.info("Enhanced elements enabled - all interactions now use JavaScript methods")
 
     # Verify stealth is working first
     driver.get("about:blank")

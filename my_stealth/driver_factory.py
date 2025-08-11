@@ -358,6 +358,17 @@ def create_stealth_driver(*,
     opts.add_argument("--start-maximized")          # ask Chrome to start maximised
     opts.add_argument(f"user-agent={get_consistent_user_agent()}")
     
+    # Enable performance logging for CDP event monitoring
+    # This allows my_stealth.cdp_events to capture network and other browser events
+    opts.add_experimental_option("perfLoggingPrefs", {
+        "enableNetwork": True,
+        "enablePage": True
+    })
+    opts.set_capability("goog:loggingPrefs", {
+        "performance": "ALL",
+        "browser": "ALL"
+    })
+    
     # UC Philosophy: NEVER run headless - it's a major detection flag
     # Real users always have visible browsers, so we do too
 
@@ -440,8 +451,21 @@ def create_stealth_driver(*,
         try:
             driver.maximize_window()
             log.info("Browser window maximised via driver.maximize_window()")
+            
+            # Verify window size is valid after maximizing
+            window_size = driver.get_window_size()
+            if window_size['width'] <= 0 or window_size['height'] <= 0:
+                log.warning("Invalid window size after maximize, setting fallback size")
+                driver.set_window_size(1280, 720)
+                
         except Exception as exc:   # pragma: no cover – safety net
             log.warning("Failed to maximise window: %s", exc)
+            # Fallback to reasonable size
+            try:
+                driver.set_window_size(1280, 720)
+                log.info("Set fallback window size: 1280x720")
+            except Exception:
+                pass
 
     # --------------------------------------------------------------
     # 6️⃣  Apply stealth masks – consistent fingerprint per profile
