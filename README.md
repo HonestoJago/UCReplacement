@@ -63,10 +63,9 @@ driver = get_driver()
 
 # With common options
 driver = get_driver(
-    headless=False,              # Visible browser window
     maximise=True,               # Start maximized
     enable_stealth=True,         # Apply anti-detection patches
-    randomise_viewport=True      # Randomize window size
+    apply_viewport=True          # Apply consistent viewport per profile
 )
 ```
 
@@ -75,7 +74,6 @@ driver = get_driver(
 ```python
 driver = get_driver(
     # === Browser Behavior ===
-    headless=False,                    # Run in headless mode
     maximise=True,                     # Maximize window on startup
     
     # === Profile & Data ===
@@ -93,7 +91,7 @@ driver = get_driver(
     
     # === Stealth Configuration ===
     enable_stealth=True,               # Enable/disable stealth patches
-    randomise_viewport=True,           # Randomize window size (vs fixed/maximized)
+    apply_viewport=True,               # Apply consistent viewport per profile
 )
 ```
 
@@ -157,10 +155,10 @@ driver.quit()
 ```python
 from my_stealth import get_driver
 
-# Force maximized window (disables viewport randomization)
+# Force maximized window (disables viewport consistency)
 driver = get_driver(
     maximise=True,           # Maximize window
-    randomise_viewport=False # Don't randomize size
+    apply_viewport=False     # Don't apply viewport mask
 )
 
 driver.get('https://example.com')
@@ -200,15 +198,38 @@ driver = get_driver(
 # Clean slate for testing, isolated from your real browsing
 ```
 
-### 5. Headless Mode
+### 5. Browser-Side API Requests
 
 ```python
+# Perfect for game bots or authenticated APIs
 driver = get_driver(
-    headless=True,                  # No visible window
-    randomise_viewport=True         # Still randomize fingerprint
+    profile_path="./game_profile",
+    maximise=True
 )
 
-# Perfect for server environments or background processing
+# Navigate to establish proper context
+driver.get("https://yourgame.com")
+driver.execute_cdp_cmd("Runtime.enable", {})
+
+# Send authentic browser-side requests
+result = driver.execute_cdp_cmd("Runtime.evaluate", {
+    "expression": """
+    (async () => {
+        const response = await fetch('/api/action', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({action: 'play'}),
+            credentials: 'include'
+        });
+        return await response.json();
+    })()
+    """,
+    "awaitPromise": True,
+    "returnByValue": True
+})
+
+api_data = result["result"]["value"]
+print(f"API response: {api_data}")
 ```
 
 ### 6. Proxy Usage
@@ -275,6 +296,428 @@ search_box = driver.find_element(By.NAME, "q")
 human_type(search_box, "my search query", typing_speed=0.1)
 human_delay(1.0, 2.0)
 search_box.send_keys(Keys.RETURN)
+```
+
+## 🌐 Browser-Side Network Requests (Fetch API)
+
+For sending API requests that appear completely authentic, use the browser's native `fetch` API instead of external HTTP libraries. This ensures requests have perfect browser fingerprints and bypass CORS restrictions.
+
+### Why Use Browser-Side Fetch?
+
+- ✅ **Perfect Headers**: Automatic browser headers (User-Agent, Accept, etc.)
+- ✅ **CORS Compliance**: Handles preflight requests naturally  
+- ✅ **Cookie Integration**: Automatic session/authentication cookies
+- ✅ **No Detection**: Indistinguishable from real user requests
+- ✅ **Consistent Fingerprint**: Matches your browser's actual network stack
+
+### Basic Fetch Examples
+
+#### 1. Simple GET Request
+
+```python
+import my_stealth as uc
+import json
+
+driver = uc.Chrome(profile_path="./my_profile")
+driver.get("about:blank")  # Initialize context
+
+# Enable CDP for most reliable execution
+driver.execute_cdp_cmd("Runtime.enable", {})
+
+# Execute fetch via CDP (recommended method)
+result = driver.execute_cdp_cmd("Runtime.evaluate", {
+    "expression": """
+    (async () => {
+        try {
+            const response = await fetch('https://httpbin.org/get', {
+                method: 'GET',
+                mode: 'cors'
+            });
+            const data = await response.json();
+            return { 
+                success: true, 
+                status: response.status, 
+                data: data 
+            };
+        } catch (error) {
+            return { 
+                success: false, 
+                error: error.message 
+            };
+        }
+    })()
+    """,
+    "awaitPromise": True,
+    "returnByValue": True
+})
+
+fetch_result = result["result"]["value"]
+if fetch_result["success"]:
+    print(f"✅ Request successful: {fetch_result['status']}")
+    print(f"User-Agent sent: {fetch_result['data']['headers']['User-Agent']}")
+else:
+    print(f"❌ Request failed: {fetch_result['error']}")
+```
+
+#### 2. POST Request with JSON
+
+```python
+driver = uc.Chrome(profile_path="./my_profile")
+driver.get("about:blank")
+driver.execute_cdp_cmd("Runtime.enable", {})
+
+# Prepare payload
+payload = {
+    "username": "user123",
+    "action": "login",
+    "timestamp": "2025-01-11T10:00:00Z"
+}
+
+# Execute POST request
+result = driver.execute_cdp_cmd("Runtime.evaluate", {
+    "expression": f"""
+    (async () => {{
+        try {{
+            const response = await fetch('https://httpbin.org/post', {{
+                method: 'POST',
+                headers: {{
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }},
+                body: JSON.stringify({json.dumps(payload)}),
+                credentials: 'include'  // Include cookies
+            }});
+            const data = await response.json();
+            return {{ 
+                success: true, 
+                status: response.status, 
+                data: data 
+            }};
+        }} catch (error) {{
+            return {{ 
+                success: false, 
+                error: error.message 
+            }};
+        }}
+    }})()
+    """,
+    "awaitPromise": True,
+    "returnByValue": True
+})
+
+post_result = result["result"]["value"]
+if post_result["success"]:
+    echo_data = post_result["data"]["json"]
+    print(f"✅ POST successful: {echo_data}")
+else:
+    print(f"❌ POST failed: {post_result['error']}")
+```
+
+#### 3. Game/API Authentication Example
+
+```python
+# Perfect for gaming bots or authenticated APIs
+driver = uc.Chrome(profile_path="./game_profile")
+
+# Navigate to your game/app (establishes proper origin)
+driver.get("https://yourgame.com/play")
+
+# Wait for page load and switch to game frame if needed
+time.sleep(3)
+iframes = driver.find_elements("tag name", "iframe")
+if iframes:
+    driver.switch_to.frame(iframes[0])  # Switch to game context
+
+driver.execute_cdp_cmd("Runtime.enable", {})
+
+# Send authenticated game action
+game_action = {
+    "action": "place_bet",
+    "amount": 100,
+    "game_round": "abc123"
+}
+
+result = driver.execute_cdp_cmd("Runtime.evaluate", {
+    "expression": f"""
+    (async () => {{
+        try {{
+            // This request will include all cookies and proper origin
+            const response = await fetch('/api/game/action', {{
+                method: 'POST',
+                headers: {{
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }},
+                body: JSON.stringify({json.dumps(game_action)}),
+                credentials: 'include'  // Critical for game sessions
+            }});
+            
+            if (!response.ok) {{
+                throw new Error(`HTTP ${{response.status}}: ${{response.statusText}}`);
+            }}
+            
+            const data = await response.json();
+            return {{ 
+                success: true, 
+                status: response.status, 
+                data: data 
+            }};
+        }} catch (error) {{
+            return {{ 
+                success: false, 
+                error: error.message,
+                type: error.name
+            }};
+        }}
+    }})()
+    """,
+    "awaitPromise": True,
+    "returnByValue": True,
+    "userGesture": True  # Simulate user interaction
+})
+
+api_result = result["result"]["value"]
+if api_result["success"]:
+    print(f"🎮 Game action successful: {api_result['data']}")
+else:
+    print(f"❌ Game action failed: {api_result['error']}")
+```
+
+### Advanced Fetch Patterns
+
+#### 1. Helper Function for Cleaner Code
+
+```python
+def browser_fetch(driver, url, options=None):
+    """
+    Helper function for clean browser-side fetch requests.
+    
+    Args:
+        driver: Selenium WebDriver instance
+        url: Target URL
+        options: Fetch options dict (method, headers, body, etc.)
+    
+    Returns:
+        dict: {success: bool, status: int, data: any, error: str}
+    """
+    options = options or {}
+    options_json = json.dumps(options)
+    
+    result = driver.execute_cdp_cmd("Runtime.evaluate", {
+        "expression": f"""
+        (async () => {{
+            try {{
+                const response = await fetch('{url}', {options_json});
+                
+                let data;
+                const contentType = response.headers.get('content-type') || '';
+                if (contentType.includes('application/json')) {{
+                    data = await response.json();
+                }} else {{
+                    data = await response.text();
+                }}
+                
+                return {{
+                    success: true,
+                    status: response.status,
+                    statusText: response.statusText,
+                    headers: Object.fromEntries(response.headers.entries()),
+                    data: data,
+                    url: response.url
+                }};
+            }} catch (error) {{
+                return {{
+                    success: false,
+                    error: error.message,
+                    type: error.name
+                }};
+            }}
+        }})()
+        """,
+        "awaitPromise": True,
+        "returnByValue": True
+    })
+    
+    return result["result"]["value"]
+
+# Usage
+driver = uc.Chrome(profile_path="./my_profile")
+driver.get("https://example.com")
+driver.execute_cdp_cmd("Runtime.enable", {})
+
+# Clean GET request
+get_result = browser_fetch(driver, "https://httpbin.org/get")
+
+# Clean POST request  
+post_result = browser_fetch(driver, "https://httpbin.org/post", {
+    "method": "POST",
+    "headers": {"Content-Type": "application/json"},
+    "body": json.dumps({"key": "value"}),
+    "credentials": "include"
+})
+```
+
+#### 2. Alternative: Using execute_async_script
+
+```python
+# Less stealthy but more widely supported fallback
+driver.set_script_timeout(30)  # Set timeout for async operations
+
+result = driver.execute_async_script("""
+    const [url, options, callback] = arguments;
+    
+    fetch(url, options)
+        .then(async response => {
+            const data = await response.json();
+            callback({
+                success: true,
+                status: response.status,
+                data: data
+            });
+        })
+        .catch(error => {
+            callback({
+                success: false,
+                error: error.message
+            });
+        });
+""", "https://httpbin.org/get", {"method": "GET"})
+
+print(f"Async script result: {result}")
+```
+
+### Best Practices for Browser Fetch
+
+#### 1. Proper Context Setup
+
+```python
+# ✅ CORRECT: Establish proper context first
+driver = uc.Chrome(profile_path="./consistent_profile")
+driver.get("https://your-target-site.com")  # Navigate to establish origin
+time.sleep(2)  # Let page load completely
+
+# Switch to correct frame if needed (games, SPAs)
+iframes = driver.find_elements("tag name", "iframe")
+if iframes:
+    driver.switch_to.frame(iframes[0])
+
+# Enable CDP
+driver.execute_cdp_cmd("Runtime.enable", {})
+
+# Now fetch requests will have proper origin/cookies
+result = browser_fetch(driver, "/api/endpoint", {"credentials": "include"})
+```
+
+#### 2. Handle CORS Properly
+
+```python
+# Cross-origin requests need proper mode
+options = {
+    "method": "POST",
+    "mode": "cors",  # Handle CORS properly
+    "credentials": "omit",  # Don't send cookies for cross-origin
+    "headers": {
+        "Content-Type": "application/json"
+        # Don't add custom headers that trigger preflight unless server supports them
+    },
+    "body": json.dumps(data)
+}
+
+# Same-origin requests can include credentials
+same_origin_options = {
+    "method": "POST", 
+    "credentials": "include",  # Include cookies for same-origin
+    "headers": {"Content-Type": "application/json"},
+    "body": json.dumps(data)
+}
+```
+
+#### 3. Error Handling and Debugging
+
+```python
+def robust_fetch(driver, url, options=None, max_retries=3):
+    """Robust fetch with error handling and retries."""
+    
+    for attempt in range(max_retries):
+        try:
+            result = browser_fetch(driver, url, options)
+            
+            if result["success"]:
+                return result
+            else:
+                print(f"Attempt {attempt + 1} failed: {result['error']}")
+                if "Failed to fetch" in result.get("error", ""):
+                    print("Possible CORS issue - check server headers")
+                elif "TypeError" in result.get("type", ""):
+                    print("Possible syntax error in fetch options")
+                    
+        except Exception as e:
+            print(f"CDP execution failed on attempt {attempt + 1}: {e}")
+        
+        if attempt < max_retries - 1:
+            time.sleep(2 ** attempt)  # Exponential backoff
+    
+    return {"success": False, "error": "Max retries exceeded"}
+
+# Usage
+result = robust_fetch(driver, "https://api.example.com/data", {
+    "method": "GET",
+    "credentials": "include"
+})
+```
+
+### Testing Your Fetch Implementation
+
+Use the included test script to verify everything works:
+
+```bash
+# Run comprehensive fetch tests
+python test_browser_fetch.py
+```
+
+This tests:
+- ✅ Basic GET/POST requests
+- ✅ CORS preflight handling  
+- ✅ Cookie management
+- ✅ Error scenarios
+- ✅ User-Agent consistency
+
+### Troubleshooting Fetch Issues
+
+#### "Failed to fetch" Errors
+
+```python
+# Check if it's a CORS issue
+driver.get("about:blank")
+context = driver.execute_script("""
+    return {
+        origin: location.origin,
+        href: location.href,
+        userAgent: navigator.userAgent.substring(0, 50)
+    };
+""")
+print(f"Context: {context}")
+
+# Test with simple same-origin request first
+driver.get("https://httpbin.org")
+simple_test = browser_fetch(driver, "/get")  # Same-origin
+print(f"Simple test: {simple_test['success']}")
+```
+
+#### Cookie/Session Issues
+
+```python
+# Verify cookies are being sent
+result = browser_fetch(driver, "https://httpbin.org/cookies", {
+    "credentials": "include"
+})
+print(f"Cookies sent: {result['data']['cookies']}")
+
+# Set a test cookie first
+driver.get("https://httpbin.org")
+driver.add_cookie({"name": "test", "value": "my_stealth"})
+result = browser_fetch(driver, "/cookies", {"credentials": "include"})
+print(f"Test cookie: {result['data']['cookies']}")
 ```
 
 ## 🍪 Cookie Management
@@ -372,7 +815,7 @@ driver = get_driver(
 driver = get_driver(
     enable_stealth=True,
     maximise=True,              # Start maximized
-    randomise_viewport=False    # Don't randomize after maximizing
+    apply_viewport=False        # Don't apply viewport mask
 )
 ```
 

@@ -104,7 +104,6 @@ TESTS: Dict[str, callable] = {
 
 def main() -> None:  # pragma: no cover
     driver = get_driver(
-        headless=False,
         profile_path=str(BRAVE_USER_DATA_DIR),
         profile_name=BRAVE_PROFILE_NAME,
         maximise=True,

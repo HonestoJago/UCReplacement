@@ -16,10 +16,10 @@ from typing import Tuple
 def get_consistent_user_agent() -> str:
     """
     Return a realistic user agent that matches the system and browser.
-    Uses consistent UA per system rather than random rotation.
+    Always returns the same UA for this system to maintain consistency.
     
     UC's approach: Use the actual browser's real user agent to maintain
-    consistency across sessions. Random user agents are suspicious.
+    consistency across sessions. Changing user agents is suspicious.
     """
     # Detect actual system info for consistent UA
     system = platform.system()
@@ -50,16 +50,15 @@ def get_consistent_user_agent() -> str:
 # ----------------------------------------------------------------------
 def get_consistent_viewport() -> Tuple[int, int, float]:
     """
-    Return consistent viewport dimensions based on common real resolutions.
+    Return consistent viewport dimensions for this profile.
     
-    UC's approach: Use actual screen size or a consistent preset that
-    matches the user agent and hardware. Random viewports are suspicious
-    for persistent accounts.
+    UC's approach: Same profile = same viewport = same "device" fingerprint.
+    Maintains account safety by being the exact same "device" every session.
     
     Returns (width, height, device_pixel_ratio)
     """
-    # Most common resolutions for consistency
-    # These match real devices and don't change between sessions
+    # Most common resolutions that match real devices
+    # These create believable, consistent fingerprints
     common_resolutions = [
         (1920, 1080, 1.0),  # Full HD (most common)
         (1366, 768, 1.0),   # HD (common laptop)
@@ -67,8 +66,10 @@ def get_consistent_viewport() -> Tuple[int, int, float]:
         (1280, 720, 1.0),   # HD (older devices)
     ]
     
-    # Use environment variable to maintain consistency per profile/user
-    profile_hash = hash(os.getenv("BRAVE_USER_DATA_DIR", "default"))
+    # Use profile path to ensure same resolution for same profile
+    # This creates a stable "device" fingerprint per profile
+    profile_path = os.getenv("BRAVE_USER_DATA_DIR", "default")
+    profile_hash = hash(profile_path)
     resolution_index = abs(profile_hash) % len(common_resolutions)
     
     return common_resolutions[resolution_index]
@@ -81,8 +82,8 @@ def get_system_timezone() -> str:
     """
     Get the actual system timezone using the most reliable method.
     
-    UC's approach: Use the real system timezone rather than random zones.
-    Timezone jumping is extremely suspicious for account security.
+    UC's approach: Use the real system timezone to maintain consistency.
+    Timezone changes are extremely suspicious for account security.
     """
     try:
         # Enhanced timezone detection (inspired by Claude's approach)
@@ -139,8 +140,8 @@ def get_consistent_hardware() -> Tuple[int, int]:
     """
     Return consistent hardware specs (CPU cores, RAM GB).
     
-    UC's approach: Use actual system specs or consistent realistic values
-    that match the user agent and don't change between sessions.
+    UC's approach: Use actual system specs to create believable,
+    consistent fingerprints that match the real system.
     
     Returns (cpu_cores, memory_gb)
     """
@@ -197,22 +198,30 @@ def get_profile_fingerprint(profile_id: str = None) -> dict:
 # 6️⃣  UC's Canvas Approach: Do Nothing
 # ----------------------------------------------------------------------
 # UC Philosophy: Let canvas render naturally using real system hardware.
-# Fingerprint = consistent, matches real system hardware.
-# This approach maintains account safety by being the same "device" every time.
+# Consistent fingerprint = consistent "device" = account safety.
+# Same profile always shows the same canvas fingerprint (same "device").
 # 
-# Canvas noise/randomization was removed because:
-# 1. UC doesn't use canvas noise - it maintains fingerprint consistency
-# 2. Random fingerprints are suspicious for persistent accounts
-# 3. Consistent fingerprints = same "device" = safer for account security
+# Canvas fingerprint protection follows UC's philosophy:
+# 1. UC doesn't add canvas noise - it maintains fingerprint consistency
+# 2. Consistent fingerprints appear as the same "device" every session
+# 3. Account safety requires being the same "device", not a different one
 
 
 # ----------------------------------------------------------------------
 # 7️⃣  Backward compatibility aliases (for existing code)
 # ----------------------------------------------------------------------
 def random_user_agent() -> str:
-    """Deprecated: Use get_consistent_user_agent() for UC-style consistency"""
+    """Deprecated: Use get_consistent_user_agent() for UC-style consistency.
+    
+    Note: This function never returned random values - it maintains consistency
+    like UC. The name is misleading and kept only for backward compatibility.
+    """
     return get_consistent_user_agent()
 
 def random_viewport() -> Tuple[int, int, float]:
-    """Deprecated: Use get_consistent_viewport() for UC-style consistency"""
+    """Deprecated: Use get_consistent_viewport() for UC-style consistency.
+    
+    Note: This function never returned random values - it maintains consistency
+    per profile like UC. The name is misleading and kept only for compatibility.
+    """
     return get_consistent_viewport()

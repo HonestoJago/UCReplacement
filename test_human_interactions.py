@@ -314,9 +314,8 @@ def main() -> None:
     """Run all human-like interaction tests"""
     log.info("🚀 Starting Human-like Interaction Tests")
     
-    # Create stealth driver
+    # Create stealth driver - always visible for maximum stealth
     driver = get_driver(
-        headless=False,
         profile_path=BRAVE_USER_DATA_DIR,
         profile_name=BRAVE_PROFILE_NAME,
         maximise=True,

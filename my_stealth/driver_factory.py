@@ -131,14 +131,14 @@ def mask_languages_and_plugins(driver) -> None:
         """
     )
 
-def mask_viewport(driver, *, randomise: bool = True) -> None:
+def mask_viewport(driver, *, apply_viewport: bool = True) -> None:
     """
-    Set consistent viewport size when randomise is True.
-    UC approach: Use consistent viewport per profile, not random each session.
-    When you want the window to stay maximised, call with randomise=False.
+    Set consistent viewport size based on profile.
+    UC approach: Use consistent viewport per profile, same "device" every session.
+    When you want the window to stay maximized, call with apply_viewport=False.
     """
-    if not randomise:
-        log.debug("Viewport mask disabled – keeping Chrome's original size.")
+    if not apply_viewport:
+        log.debug("Viewport mask disabled – keeping browser's original size.")
         return
 
     w, h, dpr = get_consistent_viewport()
@@ -150,7 +150,7 @@ def mask_viewport(driver, *, randomise: bool = True) -> None:
           get: () => {dpr}
         }});
         
-        // Ensure screen properties are consistent (inspired by Claude)
+        // Ensure screen properties are consistent - same "device" every session
         Object.defineProperty(screen, 'width', {{
           get: () => {w}
         }});
@@ -294,27 +294,28 @@ def mask_misc(driver) -> None:
         """
     )
 
-def apply_stealth(driver, *, randomise_viewport: bool = True) -> None:
+def apply_stealth(driver, *, apply_viewport: bool = True) -> None:
     """
-    Run *all* masks.  The only mask you might want to skip is the viewport
-    one – pass `randomise_viewport=False` to keep the window size you set
-    (maximised or a fixed size you supplied via Chrome options).
+    Run *all* stealth masks for consistent "device" fingerprint.
+    The only mask you might want to skip is the viewport one – pass 
+    `apply_viewport=False` to keep the window size you set (maximized).
+    
+    UC Philosophy: Same profile = same "device" = consistent fingerprint.
     """
     mask_webdriver(driver)
     mask_languages_and_plugins(driver)
-    mask_viewport(driver, randomise=randomise_viewport)   # <-- respects the flag
+    mask_viewport(driver, apply_viewport=apply_viewport)   # <-- respects the flag
     mask_webgl(driver)
     # mask_canvas(driver) - REMOVED: UC approach is to let canvas render naturally
     mask_audio_context(driver)
     mask_hardware_and_timezone(driver)
     mask_misc(driver)
-    log.info("All stealth patches applied.")
+    log.info("All stealth patches applied - consistent fingerprint established.")
 
 # ------------------------------------------------------------------
 # 4️⃣  Public factory – the only thing you import from this module
 # ------------------------------------------------------------------
 def create_stealth_driver(*,
-                         headless: bool = False,
                          proxy: Optional[str] = None,
                          profile_path: Optional[str] = None,
                          profile_name: Optional[str] = None,
@@ -322,24 +323,27 @@ def create_stealth_driver(*,
                          driver_path: Optional[str] = None,
                          enable_stealth: bool = True,
                          maximise: bool = True,
-                         randomise_viewport: bool = True) -> webdriver.Chrome:
+                         apply_viewport: bool = True) -> webdriver.Chrome:
     """
     Build a Brave/Chrome driver with the classic UC stealth masks **and**
     an optional persistent profile.
+    
+    UC Philosophy: Always run with visible UI - headless is a major bot detection flag.
+    Real users don't browse headlessly, so neither should stealth automation.
 
     Parameters
     ----------
-    headless          – run Chrome headless.
     proxy             – optional proxy URL.
     profile_path      – folder that will be used as `--user-data-dir`.
+    profile_name      – specific profile directory name within user_data_dir.
     binary_path       – explicit path to Brave/Chrome binary (optional).
     driver_path       – explicit path to chromedriver (optional).
     enable_stealth    – set False to get a plain driver (useful for debugging).
     maximise          – ask Chrome to start maximised **and** call
                          `driver.maximize_window()` after creation.
-    randomise_viewport – if True (default) the classic UC random‑viewport mask
-                         is applied; set to False when you want a deterministic
-                         size (e.g. maximised).
+    apply_viewport    – if True (default) applies consistent viewport mask
+                         for this profile; set to False when you want to keep
+                         the browser's natural size (e.g. maximized).
     """
     opts = Options()
     opts.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -353,10 +357,9 @@ def create_stealth_driver(*,
     opts.add_argument("--disable-dev-shm-usage")
     opts.add_argument("--start-maximized")          # ask Chrome to start maximised
     opts.add_argument(f"user-agent={get_consistent_user_agent()}")
-
-    if headless:
-        opts.add_argument("--headless=new")
-        opts.add_argument("--disable-features=VizDisplayCompositor")
+    
+    # UC Philosophy: NEVER run headless - it's a major detection flag
+    # Real users always have visible browsers, so we do too
 
     if proxy:
         opts.add_argument(f"--proxy-server={proxy}")
@@ -431,9 +434,9 @@ def create_stealth_driver(*,
         log.warning("Initial about:blank navigation failed (non-fatal): %s", exc)
 
     # --------------------------------------------------------------
-    # 5️⃣  **Maximise** – only when we have a UI (headless == False)
+    # 5️⃣  **Maximise** – we always have a visible UI for stealth
     # --------------------------------------------------------------
-    if maximise and not headless:
+    if maximise:
         try:
             driver.maximize_window()
             log.info("Browser window maximised via driver.maximize_window()")
@@ -441,14 +444,14 @@ def create_stealth_driver(*,
             log.warning("Failed to maximise window: %s", exc)
 
     # --------------------------------------------------------------
-    # 6️⃣  Apply stealth masks – pass the flag that controls viewport randomisation
+    # 6️⃣  Apply stealth masks – consistent fingerprint per profile
     # --------------------------------------------------------------
     if enable_stealth:
-        apply_stealth(driver, randomise_viewport=randomise_viewport)
+        apply_stealth(driver, apply_viewport=apply_viewport)
 
     log.info(
-        "Stealth driver created – headless=%s, proxy=%s, profile=%s, maximise=%s, randomise_viewport=%s",
-        headless, proxy, profile_path, maximise, randomise_viewport,
+        "Stealth driver created – proxy=%s, profile=%s, maximise=%s, apply_viewport=%s",
+        proxy, profile_path, maximise, apply_viewport,
     )
     return driver
 

@@ -11,6 +11,7 @@ Key differences from original UC:
 - Modern Selenium 4.x compatibility with automatic driver management
 - Maintains same fingerprint across sessions for account safety
 - Profile-aware consistency (same profile = same "device")
+- Always runs with visible UI - no headless mode for maximum stealth
 
 Usage:
     import my_stealth as uc
@@ -27,7 +28,6 @@ Usage:
     # With profile (recommended for account safety)
     driver = uc.Chrome(
         profile_path="./profiles/my_profile",
-        headless=False,
         maximise=True
     )
     
