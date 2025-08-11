@@ -111,6 +111,13 @@ def mask_webdriver(driver) -> None:
                 }
                 return nativeToString.apply(this, arguments);
             };
+
+            // --- 4) Hide descriptor via Object.getOwnPropertyDescriptor -----
+            const nativeDescriptor = Object.getOwnPropertyDescriptor;
+            Object.getOwnPropertyDescriptor = function(obj, prop) {
+                if (prop === 'webdriver') return undefined;
+                return nativeDescriptor.apply(this, arguments);
+            };
         })();
         """
     )

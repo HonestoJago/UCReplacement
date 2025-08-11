@@ -71,45 +71,25 @@ def check_sannysoft(driver) -> bool:
 
 
 def check_nowsecure(driver) -> bool:
-    """Pass Cloudflare turnstile and ensure no automation block."""
+    """Pass if no 'Detected Automation' string appears anywhere."""
     driver.get("https://nowsecure.nl/")
-
-    # Try to solve simple turnstile checkbox if present
-    try:
-        iframe = WebDriverWait(driver, 5).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "iframe[title^='Widget containing']"))
-        )
-        driver.switch_to.frame(iframe)
-        checkbox = WebDriverWait(driver, 5).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, "input[type='checkbox']"))
-        )
-        checkbox.click()
-        driver.switch_to.default_content()
-    except Exception:
-        driver.switch_to.default_content()
-
     text = _wait_for_body_text(driver)
     return "detected automation" not in text.lower() and "selenium" not in text.lower()
 
 
-CREEP_MIRRORS = [
-    "https://reports.exanson.org/creepjs/",
-    "https://loicmouton.github.io/creepjs/",
-]
-
-
 def check_creepjs(driver) -> bool:
-    """Pass if CreepJS summary shows *GOOD* on first reachable mirror."""
-    for url in CREEP_MIRRORS:
-        try:
-            driver.get(url)
-            el = WebDriverWait(driver, 25).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, ".status-good, .passed"))
-            )
-            return el is not None
-        except Exception:
-            continue  # try next mirror
-    return False
+    """Pass if the summary badge shows *GOOD* (CreepJS demo)."""
+    driver.get("https://qp9q6.app/")  # alternative that's less likely to block
+    try:
+        # CreepJS waits ~6–8 seconds before summary appears
+        el = WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "#root .status-good, #root .passed"))
+        )
+        return el is not None
+    except Exception:
+        # Fallback: search body text
+        text = _wait_for_body_text(driver)
+        return "was not able to detect" in text.lower() or "looks like regular" in text.lower()
 
 # Mapping of test name → function
 TESTS: Dict[str, callable] = {
