@@ -8,16 +8,15 @@ selenium>=4.14.0,<5.0.0
 # The driver binary (chromedriver / brave‑driver) must be on $PATH.
 # If you prefer the script to download the correct driver
 # automatically, install webdriver‑manager and use it in your
-# code (see comment in the script).  It is optional, so we
-# keep it commented for now.
-# webdriver-manager>=4.0.1,<5.0.0
+# code (see comment in the script).  
+webdriver-manager>=4.0.1,<5.0.0
 
 # ──────────────────────────────────────────────────────────────
 # Optional helpers (feel free to uncomment when you need them)
 # ──────────────────────────────────────────────────────────────
 # python-dotenv – loads a .env file automatically.
 # Very useful for keeping secrets (USERNAME, PASSWORD, PROXY…)
-# python-dotenv>=1.0.0,<2.0.0
+python-dotenv>=1.0.0,<2.0.0
 
 # PySide6 – only required if you later integrate the driver
 # with the Qt‑based GUI that ships with the rest of the project.

@@ -3,10 +3,15 @@ import os
 import logging
 from pathlib import Path
 from typing import Optional
+from dotenv import load_dotenv
 
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
+
+# Load environment variables
+load_dotenv()
 
 # ------------------------------------------------------------------
 # 1️⃣  Helpers – **absolute** import works for a flat‑folder layout
@@ -199,6 +204,7 @@ def create_stealth_driver(*,
                          headless: bool = False,
                          proxy: Optional[str] = None,
                          profile_path: Optional[str] = None,
+                         profile_name: Optional[str] = None,
                          binary_path: Optional[str] = None,
                          driver_path: Optional[str] = None,
                          enable_stealth: bool = True,
@@ -246,6 +252,11 @@ def create_stealth_driver(*,
         p = Path(profile_path).expanduser().resolve()
         p.mkdir(parents=True, exist_ok=True)
         opts.add_argument(f"--user-data-dir={p}")
+        
+        # If a specific profile name is provided, use it
+        if profile_name:
+            opts.add_argument(f"--profile-directory={profile_name}")
+            log.info(f"Using Brave profile: {profile_name} in user data dir: {p}")
 
     if binary_path:
         opts.binary_location = binary_path
@@ -253,15 +264,39 @@ def create_stealth_driver(*,
         env_path = os.getenv("BRAVE_BINARY_PATH")
         if env_path:
             opts.binary_location = env_path
+        else:
+            # Auto-detect Brave browser on Windows
+            brave_paths = [
+                r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe",
+                r"C:\Program Files (x86)\BraveSoftware\Brave-Browser\Application\brave.exe",
+                os.path.expanduser(r"~\AppData\Local\BraveSoftware\Brave-Browser\Application\brave.exe")
+            ]
+            
+            for brave_path in brave_paths:
+                if os.path.exists(brave_path):
+                    opts.binary_location = brave_path
+                    log.info(f"Found Brave browser at: {brave_path}")
+                    break
+            else:
+                log.warning("Brave browser not found in standard locations. Will use default Chrome browser.")
+                log.info("To use Brave, set BRAVE_BINARY_PATH environment variable to your Brave executable path.")
 
     # Driver service – you can enable webdriver‑manager here if you wish
     if driver_path:
         service = Service(executable_path=driver_path)
     else:
-        # Uncomment for auto‑download:
-        # from webdriver_manager.chrome import ChromeDriverManager
-        # service = Service(ChromeDriverManager().install())
-        service = Service()
+        # Auto‑download the correct ChromeDriver version:
+        # Note: BRAVE_VERSION from .env is used for reference/logging but webdriver-manager
+        # will auto-detect the actual browser version and download the matching driver
+        chrome_version = os.getenv("BRAVE_VERSION")
+        if chrome_version:
+            log.info(f"BRAVE_VERSION environment variable is set to: {chrome_version}")
+            log.info("WebDriver Manager will auto-detect actual browser version and download matching ChromeDriver")
+        else:
+            log.info("No BRAVE_VERSION set, auto-detecting Chrome version and using compatible ChromeDriver")
+        
+        service = Service(ChromeDriverManager().install())
+        log.info("Using webdriver-manager to auto-download compatible ChromeDriver")
 
     driver = webdriver.Chrome(service=service, options=opts)
 

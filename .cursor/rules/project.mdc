@@ -1,0 +1,560 @@
+---
+alwaysApply: true
+---
+# Master Prompt: Building an Undetected-ChromeDriver Replacement
+
+## OBJECTIVE
+You are an expert Python developer tasked with building a comprehensive replacement for the undetected-chromedriver library. This replacement will use **Selenium WebDriver with Brave browser** and implement advanced anti-detection techniques for web automation and scraping.
+
+## CONTEXT & MOTIVATION
+- Undetected-chromedriver is poorly maintained (last update 2023, known bugs unfixed)
+- Anti-bot systems have evolved to detect UC's known signatures
+- Need a modern, maintainable, focused solution for stealth web automation
+- Target: Bypass sophisticated anti-bot systems (Cloudflare, DataDome, Imperva, etc.)
+
+## TECHNICAL STACK
+- **Primary Language**: Python 3.8+
+- **Browser**: Brave (Chromium-based, privacy-focused)
+- **WebDriver**: Selenium 4.x
+- **Additional Languages**: JavaScript (for browser injection)
+- **Binary Manipulation**: Python `io`, `re`, `os` modules
+- **Process Management**: `subprocess`, `multiprocessing`
+
+## EXISTING CODEBASE CONTEXT
+
+The project already has these files in the `my_stealth/` module:
+- **`__init__.py`** - Currently basic, needs UC-compatible API exports
+- **`cookies.py`** - Cookie management utilities (expand as needed)
+- **`driver_factory.py`** - Main driver creation logic (core implementation goes here)
+- **`utils.py`** - Shared utilities and helpers (patching, injection utilities)
+
+**IMPORTANT**: When providing code, always consider what's already implemented and build upon the existing structure. Check the current state of these files before suggesting changes or additions.
+
+## PROJECT STRUCTURE
+```
+UCREPLACEMENT/
+├── brave_profile/           # Brave browser profile storage
+├── my_stealth/             # 🎯 UC REPLACEMENT MODULE (main focus)
+│   ├── __pycache__/
+│   ├── __init__.py         # Public API - drop-in UC replacement
+│   ├── cookies.py          # Cookie management utilities
+│   ├── driver_factory.py   # Main driver creation logic
+│   └── utils.py            # Shared utilities and helpers
+├── stealth_env/            # Virtual environment
+├── .env                    # Environment configuration
+├── .gitignore
+├── brave_google_uc_like.py # Testing/demo script
+├── profile.py              # Profile management
+├── requirements.txt        # Dependencies
+├── stealth.py             # Main application entry point
+└── test_brave_stealth.py  # Test suite
+```
+
+**CRITICAL**: The `my_stealth/` folder is the core UC replacement module. It should be designed as a **standalone, importable package** that can completely replace undetected-chromedriver. Users should be able to do:
+
+```python
+# Instead of: import undetected_chromedriver as uc
+import my_stealth as uc
+
+# Drop-in replacement usage
+driver = uc.Chrome()
+driver.get('https://example.com')
+```
+
+## CORE ARCHITECTURE COMPONENTS
+
+### **Module Organization (`my_stealth/` package)**
+
+#### **1. `__init__.py` - Public API**
+- Export main classes: `Chrome`, `ChromeOptions`, `TARGET_VERSION`
+- Drop-in replacement interface for UC
+- Version management and compatibility
+
+#### **2. `driver_factory.py` - Core Driver Logic**
+- **BravePatcher** class - Download and patch Brave/ChromeDriver binaries
+- **StealthDriver** class - Main interface (inherits from selenium.webdriver.Chrome)
+- **StealthOptions** class - Enhanced ChromeOptions with stealth defaults
+- **ProcessManager** class - Launch Brave independently from driver
+
+#### **3. `utils.py` - Shared Utilities**
+- **JavaScriptInjector** class - Hide navigator.webdriver, mock Chrome objects
+- **EvasionEngine** class - Human-like delays, mouse movement, viewport randomization
+- Binary patching utilities (CDC replacement, signature detection)
+- Network and fingerprint utilities
+
+#### **4. `cookies.py` - Session Management**
+- Cookie persistence and realistic handling
+- Profile management utilities
+- Session state management
+- Clean session creation
+
+## UC FEATURES TO IMPLEMENT (Comprehensive List)
+
+### **Core Driver Management**
+- [ ] **Automatic ChromeDriver Download & Version Management**
+  - Auto-detect installed Chrome/Brave version
+  - Download matching ChromeDriver binary
+  - Handle version compatibility (TARGET_VERSION support)
+  - Support for specific Chrome versions via `version_main` parameter
+  - Cache downloaded drivers to prevent re-downloading
+
+- [ ] **Binary Patching System**
+  - Replace CDC strings (`cdc_adoQpoasnfa76pfcZLmcfl_`) with random alternatives
+  - Generate random CDC replacements using `gen_random_cdc()`
+  - Patch injection prevention (UC's anti-detection mechanism)
+  - Mark patched binaries with "undetected chromedriver" signature
+  - Prevent re-patching of already modified binaries
+  - Multi-process safe patching with `user_multi_procs` support
+
+### **Browser Configuration & Options**
+- [ ] **Enhanced ChromeOptions (uc.ChromeOptions)**
+  - Pre-configured stealth arguments
+  - Auto-disable automation indicators
+  - Custom user agent support
+  - Profile management (`user_data_dir` support)
+  - Headless mode with stealth patches
+  - Sandbox control (`no_sandbox` parameter)
+  - Welcome screen suppression (`suppress_welcome`)
+
+- [ ] **Process Management**
+  - Independent browser launch (`use_subprocess` control)
+  - Detached process creation (`start_detached()`)
+  - Process cleanup and resource management
+  - Multi-threading support with proper locks
+  - Force close mechanisms (`patcher_force_close`)
+
+### **Advanced Detection Evasion**
+
+#### **JavaScript Injection & DOM Manipulation**
+- [ ] **Navigator Object Spoofing**
+  - Hide `navigator.webdriver` property (return `undefined`)
+  - Mock `window.chrome.runtime` objects
+  - Spoof `navigator.permissions` API
+  - Fix notification permissions
+  - Remove automation-controlled indicators
+
+- [ ] **Script Execution Protection**
+  - CDP-based script injection (safer than `execute_script`)
+  - Runtime evaluation without detection
+  - Prevent script fingerprinting via execute_script detection
+
+- [ ] **Element Interaction Enhancements**
+  - `WebElement.click_safe()` method for stealth clicking
+  - `WebElement.children(tag=None, recursive=False)` for DOM traversal
+  - `find_elements_recursive()` generator for complex element finding
+  - Enhanced element finding across frames
+
+#### **Chrome DevTools Protocol (CDP) Integration**
+- [ ] **CDP Event System**
+  - `enable_cdp_events` parameter for event monitoring
+  - `add_cdp_listener(event, callback)` method
+  - Wildcard event listening (`'*'` pattern)
+  - Network event monitoring (RequestWillBeSent, DataReceived)
+  - Real-time protocol analysis for debugging
+
+- [ ] **CDP Commands**
+  - `execute_cdp_cmd()` for direct CDP control
+  - Network manipulation (setBlockedURLs, setUserAgentOverride)
+  - Runtime script injection
+  - Security bypasses
+
+### **Network & Proxy Support**
+- [ ] **Proxy Integration**
+  - Standard proxy support via ChromeOptions
+  - SOCKS proxy support
+  - SeleniumWire integration (`seleniumwire_options`)
+  - Automatic proxy rotation capabilities
+  - IP blocking prevention
+
+- [ ] **Request Modification**
+  - User-Agent randomization and rotation
+  - Header manipulation via CDP
+  - Request blocking for performance
+  - TLS fingerprint normalization
+
+### **Profile & Session Management**
+- [ ] **User Data Directory Handling**
+  - Custom profile support (`user_data_dir`)
+  - Temporary profile creation and cleanup
+  - Profile persistence options
+  - Exit type fixing (prevent "restore tabs" nag)
+  - "First Run" file creation for clean profiles
+
+- [ ] **Session State Management**
+  - Cookie persistence and management
+  - Session restoration
+  - Clean session creation
+  - Profile corruption prevention
+
+### **Headless Mode Enhancements**
+- [ ] **Improved Headless Support**
+  - Headless-specific patches (experimental)
+  - User-Agent fixing for headless detection
+  - Virtual display integration
+  - Performance optimizations for headless mode
+
+### **Debugging & Monitoring**
+- [ ] **Advanced Logging**
+  - Configurable log levels (`log_level` parameter)
+  - Performance timing (patch execution time)
+  - Debug mode with detailed output
+  - Error handling and recovery
+
+- [ ] **Development Tools**
+  - CDP event monitoring for analysis
+  - Network traffic inspection
+  - Real-time debugging capabilities
+  - Detection testing integration
+
+### **Multi-Browser Support**
+- [ ] **Chromium-Based Browser Compatibility**
+  - Brave browser support (requires configuration)
+  - Chromium support
+  - Edge Chromium support
+  - Custom browser executable paths (`browser_executable_path`)
+
+### **Performance & Scalability**
+- [ ] **Multi-Processing Support**
+  - Thread-safe operations
+  - Multiple driver instances
+  - Resource sharing prevention
+  - Concurrent browser management
+
+- [ ] **Resource Optimization**
+  - Memory cleanup
+  - File handle management
+  - Temporary file cleanup
+  - Performance monitoring
+
+### **Compatibility & Maintenance**
+- [ ] **Selenium Integration**
+  - Drop-in replacement for `webdriver.Chrome()`
+  - Selenium 4.x compatibility
+  - ChromeOptions inheritance
+  - Service parameter handling
+  - Keep-alive connection management
+
+- [ ] **Version Management**
+  - Automatic version detection
+  - Compatibility checking
+  - Update mechanisms
+  - Fallback version support
+
+### **Security & Anti-Fingerprinting**
+- [ ] **Browser Fingerprint Spoofing**
+  - Canvas fingerprint protection
+  - WebGL renderer spoofing
+  - Audio context fingerprinting prevention
+  - Timezone manipulation
+  - Hardware information masking
+
+- [ ] **Advanced Evasion Techniques**
+  - Mouse movement simulation
+  - Human-like scrolling patterns
+  - Timing randomization
+  - Behavioral pattern mimicry
+  - CAPTCHA handling integration
+
+### **Error Handling & Recovery**
+- [ ] **Robust Error Management**
+  - Chrome crash detection and recovery
+  - Version mismatch handling
+  - Port conflict resolution
+  - Process cleanup on failure
+  - Graceful degradation
+
+## PROVEN UC TECHNIQUES TO IMPLEMENT
+
+### **Key Implementation Patterns from UC Source Code**
+
+#### **1. Binary Patching Implementation**
+```python
+# UC's approach - Random CDC generation
+@staticmethod
+def gen_random_cdc():
+    cdc = random.choices(string.ascii_letters, k=27)
+    return "".join(cdc).encode()
+
+# Pattern matching and replacement
+def patch_exe(self):
+    with io.open(self.executable_path, "r+b") as fh:
+        content = fh.read()
+        # Replace cdc_ strings with random alternatives
+        # Patch injection prevention code
+```
+
+#### **2. JavaScript Injection Techniques**
+```javascript
+// UC's navigator.webdriver hiding
+Object.defineProperty(navigator, 'webdriver', {
+    get: () => undefined,
+});
+
+// Chrome runtime mocking
+window.chrome = {
+    runtime: {}
+};
+
+// Permissions API spoofing
+Object.defineProperty(navigator, 'permissions', {
+    get: () => ({
+        query: () => Promise.resolve({state: 'granted'})
+    })
+});
+```
+
+#### **3. CDP Event Handling**
+```python
+# UC's CDP listener system
+driver = uc.Chrome(enable_cdp_events=True)
+driver.add_cdp_listener("Network.dataReceived", callback)
+driver.add_cdp_listener('*', wildcard_callback)  # All events
+```
+
+#### **4. Process Management**
+```python
+# UC's detached browser launching
+def start_detached(browser_path, *args):
+    # Launch browser independently from ChromeDriver
+    # Return PID for later attachment
+
+# Use subprocess control
+driver = uc.Chrome(use_subprocess=False)  # More stealth
+```
+
+#### **5. Profile Management**
+```python
+# UC's profile handling
+def fix_exit_type(user_data_dir):
+    """Fix the restore-tabs-nag"""
+    config["profile"]["exit_type"] = None
+    
+# First Run file creation
+os.mknod(user_data_dir + "/First Run")
+```
+
+### **Specific UC Methods to Replicate**
+- `WebElement.click_safe()` - Stealth clicking with detection avoidance
+- `WebElement.children(tag=None, recursive=False)` - Enhanced DOM traversal
+- `find_elements_recursive()` - Cross-frame element finding
+- `add_cdp_listener(event, callback)` - CDP event monitoring
+- `_configure_headless()` - Headless mode patches
+
+### **UC's Chrome Arguments (Pre-configured)**
+```python
+DEFAULT_ARGS = [
+    '--no-first-run',
+    '--no-service-autorun', 
+    '--password-store=basic',
+    '--disable-blink-features=AutomationControlled',
+    '--no-sandbox',  # Default True in UC
+    '--disable-dev-shm-usage',
+    '--disable-extensions',
+    '--disable-plugins-discovery',
+]
+```
+
+### **Detection Bypass Patterns**
+1. **Prevent Variable Injection** (UC's latest approach)
+   - Don't remove variables, prevent injection
+   - Use CDP for script execution instead of execute_script
+   
+2. **Browser-ChromeDriver Separation**
+   - Launch browser first, attach ChromeDriver later
+   - Disconnect during sensitive operations
+   
+3. **Timing and Behavioral Patterns**
+   - Randomized delays between actions
+   - Human-like interaction patterns
+   - Natural mouse movement simulation
+
+### **UC's File Structure for Reference**
+```
+undetected_chromedriver/
+├── __init__.py          # Main driver class
+├── patcher.py           # Binary patching logic  
+├── dprocess.py          # Process management
+├── reactor.py           # CDP event handling
+├── webelement.py        # Enhanced WebElement
+└── v2.py               # Legacy compatibility
+```
+
+## CODE QUALITY STANDARDS
+
+### **Architecture Principles**
+- Modular design with clear separation of concerns
+- Each class has single responsibility
+- Dependency injection for testability
+- Factory patterns for browser creation
+
+### **Error Handling**
+- Comprehensive try-catch blocks
+- Graceful degradation when patches fail
+- Detailed logging without exposing detection methods
+- Recovery mechanisms for browser crashes
+
+### **Performance Requirements**
+- Minimal startup overhead
+- Efficient binary patching (under 2 seconds)
+- Memory cleanup after browser sessions
+- Support for concurrent browser instances
+
+### **Security Considerations**
+- No hardcoded credentials or API keys
+- Secure handling of temporary files
+- Proper cleanup of browser profiles
+- Protection against path traversal attacks
+
+## DEVELOPMENT APPROACH
+
+### **Phase 1: Core Foundation**
+1. Binary patcher for ChromeDriver/Brave
+2. Basic JavaScript injection system
+3. Essential Chrome options configuration
+4. Simple stealth driver interface
+
+### **Phase 2: Advanced Evasion**
+1. Behavioral mimicry (delays, mouse movement)
+2. Advanced fingerprint spoofing
+3. Network-level optimizations
+4. Process management improvements
+
+### **Phase 3: Robustness & Scale**
+1. Automatic browser version detection
+2. Multi-browser instance support
+3. Advanced error recovery
+4. Performance optimization
+
+### **Testing Strategy**
+- Unit tests for each component
+- Integration tests against real websites
+- Automated detection testing
+- Performance benchmarking
+
+## AI ASSISTANT RULES
+
+### **ALWAYS DO:**
+1. **Provide complete, functional code** - no pseudo-code or incomplete snippets
+2. **Include comprehensive error handling** - anticipate and handle edge cases
+3. **Add detailed docstrings** - explain purpose, parameters, return values
+4. **Use type hints** - specify parameter and return types
+5. **Follow Python best practices** - PEP 8, meaningful variable names
+6. **Test before suggesting** - mentally verify code logic
+7. **Consider security implications** - avoid creating vulnerabilities
+8. **Optimize for maintainability** - code should be easy to modify and extend
+9. **Provide usage examples** - show how to use new components
+10. **Explain complex logic** - add comments for non-obvious code
+
+### **NEVER DO:**
+1. **Use deprecated Selenium methods** - always use Selenium 4.x syntax
+2. **Hardcode file paths** - use os.path or pathlib for cross-platform compatibility
+3. **Ignore browser version compatibility** - handle version mismatches gracefully
+4. **Create obvious detection signatures** - vary patterns and avoid predictable behavior
+5. **Skip cleanup operations** - always close browsers and clean temporary files
+6. **Use blocking operations without timeouts** - prevent infinite hangs
+7. **Log sensitive information** - avoid exposing detection methods or user data
+8. **Copy UC's exact patterns** - create new approaches to avoid known signatures
+
+### **CODE PATTERNS TO FOLLOW:**
+
+#### **Class Structure Example:**
+```python
+class ComponentName:
+    """Brief description of component purpose."""
+    
+    def __init__(self, param: Type) -> None:
+        """Initialize component with proper type hints."""
+        self._validate_parameters(param)
+        self._setup_internal_state()
+    
+    def public_method(self, param: Type) -> ReturnType:
+        """Public method with clear documentation."""
+        try:
+            return self._internal_logic(param)
+        except SpecificException as e:
+            logger.warning(f"Operation failed: {e}")
+            return self._fallback_behavior()
+    
+    def _private_method(self) -> None:
+        """Private method for internal operations."""
+        pass
+```
+
+#### **Error Handling Pattern:**
+```python
+try:
+    result = risky_operation()
+except SpecificExpectedException:
+    # Handle expected case gracefully
+    result = fallback_operation()
+except Exception as e:
+    logger.error(f"Unexpected error in {operation_name}: {e}")
+    raise CustomException(f"Failed to complete {operation_name}") from e
+finally:
+    cleanup_resources()
+```
+
+### **FILE ORGANIZATION RULES:**
+1. **Keep `my_stealth/__init__.py` minimal** - only exports and public API
+2. **Put core logic in `driver_factory.py`** - main classes and driver creation
+3. **Use `utils.py` for shared functionality** - patching, injection, evasion utilities  
+4. **Keep `cookies.py` focused** - session and profile management only
+5. **Maintain backward compatibility** - ensure drop-in UC replacement works
+6. **Use relative imports** within my_stealth package
+7. **Document all public APIs** - especially in `__init__.py`
+
+### **IMPORT STRUCTURE EXAMPLE:**
+```python
+# my_stealth/__init__.py
+from .driver_factory import Chrome, ChromeOptions
+from .utils import TARGET_VERSION
+
+__all__ = ['Chrome', 'ChromeOptions', 'TARGET_VERSION']
+
+# Usage (drop-in UC replacement):
+# import my_stealth as uc
+# driver = uc.Chrome()
+```
+
+### **DOCUMENTATION STANDARDS:**
+- README with clear setup instructions
+- API documentation for all public methods
+- Usage examples for common scenarios
+- Troubleshooting guide for common issues
+
+## SUCCESS CRITERIA
+
+### **Technical Metrics:**
+- Successfully bypass Cloudflare "Under Attack" mode
+- Pass bot detection tests (CreepJS, etc.)
+- Maintain compatibility with Selenium 4.x API
+- Startup time under 5 seconds
+- Memory usage comparable to standard ChromeDriver
+
+### **Usability Metrics:**
+- Drop-in replacement for `webdriver.Chrome()`
+- No manual configuration required for basic use
+- Clear error messages for troubleshooting
+- Comprehensive documentation and examples
+
+### **Maintenance Metrics:**
+- Modular architecture allows component updates
+- Automated testing prevents regressions
+- Clear separation between core and detection-specific code
+- Version compatibility handling
+
+### **TESTING & DOCUMENTATION:**
+- **Testing**: Work with existing `test_brave_stealth.py` structure
+- **Integration**: Ensure compatibility with `brave_google_uc_like.py` demo script
+- **Documentation**: Update docstrings and add usage examples
+- **Benchmarking**: Performance comparison with original UC
+
+### **DEVELOPMENT PRIORITIES:**
+1. **Phase 1**: Get basic UC replacement working in `my_stealth/__init__.py`
+2. **Phase 2**: Implement core patching and stealth in `driver_factory.py` 
+3. **Phase 3**: Add advanced features in `utils.py` and enhance `cookies.py`
+4. **Phase 4**: Integration testing with existing test files
+
+---
+
+**Remember: The goal is creating a robust, maintainable replacement that's better than UC, not just copying it. Focus on modern techniques, clean architecture, and long-term sustainability within the established project structure.**

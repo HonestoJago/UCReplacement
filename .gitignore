@@ -26,6 +26,7 @@ MANIFEST
 
 # Virtual environments
 uc_env/
+stealth_env/
 .env
 .venv
 env/
