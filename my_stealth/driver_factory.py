@@ -88,9 +88,30 @@ def mask_webdriver(driver) -> None:
     _add_script(
         driver,
         """
-        Object.defineProperty(navigator, 'webdriver', {
-          get: () => undefined
-        });
+        (function () {
+            // --- 1) Remove webdriver from Navigator.prototype -----------------
+            try {
+                delete Navigator.prototype.webdriver;
+            } catch (e) {}
+
+            // --- 2) Add instance-level getter returning undefined -------------
+            const newGetter = () => undefined;
+            Object.defineProperty(navigator, 'webdriver', {
+                get: newGetter,
+                configurable: false,
+                enumerable: false
+            });
+
+            // --- 3) Patch toString so getter appears native -------------------
+            const nativeToString = Function.prototype.toString;
+            const patchedFns = new WeakSet([newGetter]);
+            Function.prototype.toString = function () {
+                if (patchedFns.has(this)) {
+                    return 'function get webdriver() { [native code] }';
+                }
+                return nativeToString.apply(this, arguments);
+            };
+        })();
         """
     )
 
@@ -103,19 +124,25 @@ def mask_languages_and_plugins(driver) -> None:
           get: () => ['en-US', 'en']
         });
         
-        // Mock realistic plugins array (inspired by Claude's approach)
-        Object.defineProperty(navigator, 'plugins', {
-          get: () => {
-            const plugins = [
-              {name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer'},
-              {name: 'Chromium PDF Plugin', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai'},
-              {name: 'Chrome PDF Viewer', filename: 'internal-pdf-viewer'},
-              {name: 'Native Client', filename: 'internal-nacl-plugin'}
-            ];
-            plugins.length = 4;  // Set length property for realism
-            return plugins;
-          }
-        });
+        // Only spoof plugins if the real profile has none (e.g. temp profile)
+        if (navigator.plugins.length === 0) {
+          const createPlugin = (name, filename, description = '') => {
+            const p = Object.create(Plugin.prototype);
+            Object.assign(p, { name, filename, description, 0: {} });
+            return p;
+          };
+          const fakePlugins = Object.assign(Object.create(PluginArray.prototype), {
+            0: createPlugin('Chrome PDF Plugin', 'internal-pdf-viewer'),
+            1: createPlugin('Chromium PDF Plugin', 'mhjfbmdgcfjbbpaeojofohoefgiehjai'),
+            2: createPlugin('Chrome PDF Viewer', 'internal-pdf-viewer'),
+            3: createPlugin('Native Client', 'internal-nacl-plugin'),
+            length: 4,
+            item: function (i) { return this[i]; },
+            namedItem: function (name) { return Array.from(this).find(p => p.name === name); },
+            refresh: () => {}
+          });
+          Object.defineProperty(navigator, 'plugins', { get: () => fakePlugins });
+        }
         """
     )
 
@@ -167,16 +194,21 @@ def mask_webgl(driver) -> None:
             const overrides = {
                 0x1F00: 'Intel Inc.',  // VENDOR
                 0x1F01: 'Intel Iris OpenGL Engine',  // RENDERER
-                0x1F02: '4.1 Intel Iris OpenGL Engine',  // VERSION
-                0x8B8C: 'WebGL GLSL ES 1.0 (OpenGL ES GLSL ES 1.0 Chromium)'  // SHADING_LANGUAGE_VERSION
+                0x9246: 'Intel Iris OpenGL Engine'   // UNMASKED_RENDERER_WEBGL
             };
             
             function getParameterProxy(original) {
                 return function(param) {
+                    const value = original.apply(this, arguments);
+                    // If SwiftShader detected, override with realistic values
+                    const rendererStr = typeof value === 'string' ? value : '';
+                    if (/SwiftShader/i.test(rendererStr) && overrides[param]) {
+                        return overrides[param];
+                    }
                     if (overrides.hasOwnProperty(param)) {
                         return overrides[param];
                     }
-                    return original.apply(this, arguments);
+                    return value;
                 };
             }
             
@@ -255,8 +287,11 @@ def mask_misc(driver) -> None:
         // Permissions - consistent denials for privacy-sensitive permissions
         const originalQuery = navigator.permissions.query;
         navigator.permissions.__proto__.query = function(parameters) {
-            const deniedPermissions = ['notifications', 'geolocation', 'camera', 'microphone'];
-            if (deniedPermissions.includes(parameters.name)) {
+            if (parameters.name === 'notifications') {
+                // Realistic: default (not yet granted) state
+                return Promise.resolve({state: 'default'});
+            }
+            if (['geolocation','camera','microphone'].includes(parameters.name)) {
                 return Promise.resolve({state: 'denied'});
             }
             return originalQuery.apply(this, arguments);
