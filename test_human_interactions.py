@@ -137,8 +137,14 @@ def test_google_search(driver):
     """Test 1: Basic Google search with human-like typing"""
     log.info("🔍 TEST 1: Google Search with Human-like Typing")
     
-    # Navigate to Google
-    driver.get("https://www.google.com")
+    # If a restored tab put us on an unexpected page, redirect
+    try:
+        current = driver.current_url
+    except Exception:
+        current = "about:blank"
+
+    if not current.startswith("https://www.google."):
+        driver.get("https://www.google.com")
     human_delay(2.0, 3.0)
     
     # Find the search box
@@ -180,7 +186,7 @@ def test_form_interaction(driver):
     """Test 2: Form interaction with realistic behavior"""
     log.info("📝 TEST 2: Form Interaction Test")
     
-    # Navigate to a simple form page (using HTML form generator)
+    # Always navigate explicitly – session restore may have left us elsewhere
     driver.get("https://www.w3schools.com/html/tryit.asp?filename=tryhtml_form_submit")
     human_delay(3.0, 5.0)
     
@@ -272,6 +278,35 @@ def test_mouse_movements(driver):
         return False
 
 # -----------------------------------------------------------------
+# 5️⃣⁺  Stealth-specific verification (CDC variables)
+# -----------------------------------------------------------------
+
+def test_cdc_variables_absence(driver):
+    """Test 4: Ensure no `cdc_*` variables are present (patch verification)
+
+    This directly checks the *core* promise of the binary patcher: that the
+    notorious JavaScript variables injected by vanilla ChromeDriver (e.g.
+    ``window.cdc_adoQpoasnfa76pfcZLmcfl_Array``) are **absent**.  A failure
+    here means the driver was *not* patched correctly and therefore much more
+    likely to be detected by anti-bot defences.
+    """
+    log.info("🔒 TEST 4: CDC Variable Absence Verification")
+
+    # Use a completely blank page to avoid site-specific scripts interfering
+    driver.get("about:blank")
+
+    # Gather keys on *window* and *document* objects that start with 'cdc_' or '$cdc_'
+    cdc_window = driver.execute_script("return Object.keys(window).filter(k => k.startsWith('cdc_'));")
+    cdc_document = driver.execute_script("return Object.keys(document).filter(k => k.startsWith('$cdc_'));")
+
+    if not cdc_window and not cdc_document:
+        log.info("✅ No CDC variables detected – patch confirmed")
+        return True
+
+    log.warning("❌ Detected CDC variables! window:%s document:%s", cdc_window, cdc_document)
+    return False
+
+# -----------------------------------------------------------------
 # 6️⃣  Main test runner
 # -----------------------------------------------------------------
 
@@ -307,6 +342,10 @@ def main() -> None:
         human_delay(3.0, 5.0)
         
         test_results['mouse_movements'] = test_mouse_movements(driver)
+        human_delay(3.0, 5.0)
+
+        # NEW – verify binary patch actually removed CDC variables
+        test_results['cdc_variables_absence'] = test_cdc_variables_absence(driver)
         
         # Summary
         log.info("\n" + "="*50)

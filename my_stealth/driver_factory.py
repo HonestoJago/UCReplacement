@@ -1,14 +1,16 @@
 # driver_factory.py
 import os
 import logging
+import json
 from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
 
+# Selenium imports
 from selenium import webdriver
-# Selenium helpers
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
+from selenium.common.exceptions import NoSuchWindowException
 
 # Optional auto-downloader (fallback when our own patcher is not used)
 from webdriver_manager.chrome import ChromeDriverManager
@@ -30,17 +32,54 @@ from my_stealth.utils import get_consistent_user_agent, get_consistent_viewport,
 log = logging.getLogger(__name__)
 
 # ------------------------------------------------------------------
+# 0️⃣  Profile helper – prevent Brave from restoring old tabs
+# ------------------------------------------------------------------
+def _fix_exit_type(user_data_dir: Path, profile_name: str = "Default") -> None:
+    """Ensure the profile's *exit_type* is set to *CleanExit*.
+
+    Brave/Chrome write the last shutdown state into the *Preferences* JSON.  If
+    the browser did not close gracefully (common with scripted sessions) the
+    value becomes "Crashed" and the next launch will auto-restore all tabs –
+    exactly what we *do not* want in automated tests.  UC solves this by
+    resetting the flag; we replicate that here.
+    """
+    pref_file = user_data_dir / profile_name / "Preferences"
+    try:
+        if not pref_file.is_file():
+            return  # nothing to do – fresh profile
+
+        prefs = json.loads(pref_file.read_text(encoding="utf-8"))
+        if prefs.get("profile", {}).get("exit_type") != "CleanExit":
+            prefs.setdefault("profile", {})["exit_type"] = "CleanExit"
+            pref_file.write_text(json.dumps(prefs, indent=2), encoding="utf-8")
+            log.debug("Reset profile exit_type → CleanExit to avoid session restore")
+    except Exception as exc:  # pragma: no cover – safety net
+        log.warning("Failed to set exit_type=CleanExit (non-fatal): %s", exc)
+
+# ------------------------------------------------------------------
 # 2️⃣  CDP script injector (used by every mask)
 # ------------------------------------------------------------------
 def _add_script(driver, js_source: str) -> None:
-    driver.execute_cdp_cmd(
-        "Page.addScriptToEvaluateOnNewDocument",
-        {"source": js_source},
-    )
-    log.debug(
-        "Injected script (first 80 chars): %s",
-        js_source[:80].replace("\n", " ")
-    )
+    try:
+        driver.execute_cdp_cmd(
+            "Page.addScriptToEvaluateOnNewDocument",
+            {"source": js_source},
+        )
+    except NoSuchWindowException:
+        # The initial window got closed (session restore). Open a fresh tab and retry once.
+        log.debug("NoSuchWindowException during CDP inject – creating new blank tab and retrying")
+        try:
+            driver.switch_to.new_window("tab")
+        except Exception:
+            driver.execute_script("window.open('about:blank','_blank');")
+            driver.switch_to.window(driver.window_handles[-1])
+
+        driver.execute_cdp_cmd(
+            "Page.addScriptToEvaluateOnNewDocument",
+            {"source": js_source},
+        )
+
+    log.debug("Injected script (first 80 chars): %s", js_source[:80].replace("\n", " "))
 
 # ------------------------------------------------------------------
 # 3️⃣  Stealth‑mask functions (unchanged except for viewport)
@@ -305,6 +344,9 @@ def create_stealth_driver(*,
     if profile_path:
         p = Path(profile_path).expanduser().resolve()
         p.mkdir(parents=True, exist_ok=True)
+
+        # 🆕  Make sure Brave does **not** restore previous session tabs
+        _fix_exit_type(Path(profile_path).expanduser().resolve(), profile_name or "Default")
         opts.add_argument(f"--user-data-dir={p}")
         
         # If a specific profile name is provided, use it
@@ -361,6 +403,12 @@ def create_stealth_driver(*,
             log.info("Using *unpatched* driver from webdriver-manager – stealth might be reduced")
 
     driver = webdriver.Chrome(service=service, options=opts)
+
+    # Ensure a stable window before we start injecting CDP scripts.
+    try:
+        driver.get("about:blank")
+    except Exception as exc:   # pragma: no cover
+        log.warning("Initial about:blank navigation failed (non-fatal): %s", exc)
 
     # --------------------------------------------------------------
     # 5️⃣  **Maximise** – only when we have a UI (headless == False)
