@@ -19,7 +19,7 @@ from typing import Optional
 from selenium.webdriver.chrome.webdriver import WebDriver
 
 # Import our stealth package
-import my_stealth as uc
+import Auferstehung as uc
 
 # Configure logging
 logging.basicConfig(

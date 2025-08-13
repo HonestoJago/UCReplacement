@@ -16,7 +16,7 @@ from selenium.common.exceptions import NoSuchWindowException
 from webdriver_manager.chrome import ChromeDriverManager
 
 # 🆕  Stealth patcher – download **and** patch a compatible driver in one go
-from my_stealth.patcher import get_patched_chromedriver
+from Auferstehung.patcher import get_patched_chromedriver
 
 # Load environment variables
 load_dotenv()
@@ -27,7 +27,7 @@ load_dotenv()
 # If you moved the files into a sub‑package (`my_stealth/`) keep the
 # relative import (`from .utils …`).  For a single‑folder layout use the
 # absolute import as shown here.
-from my_stealth.utils import get_consistent_user_agent, get_consistent_viewport, get_system_timezone, get_system_timezone_offset, get_consistent_hardware
+from Auferstehung.utils import get_consistent_user_agent, get_consistent_viewport, get_system_timezone, get_system_timezone_offset, get_consistent_hardware
 
 log = logging.getLogger(__name__)
 
@@ -346,16 +346,20 @@ def create_stealth_driver(*,
                          the browser's natural size (e.g. maximized).
     """
     opts = Options()
-    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
+    # Reduce Chromium console spam and keep automation switches disabled
+    opts.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])  # silence "DevTools listening..."
     opts.add_experimental_option("useAutomationExtension", False)
     opts.add_argument("--disable-blink-features=AutomationControlled")
     opts.add_argument("--disable-infobars")
     opts.add_argument("--disable-extensions")
     opts.add_argument("--disable-popup-blocking")
-    opts.add_argument("--disable-gpu")
+    # Do NOT disable GPU – keeping hardware acceleration avoids noisy WebGL/SwiftShader logs
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-dev-shm-usage")
     opts.add_argument("--start-maximized")          # ask Chrome to start maximised
+    # Lower Chromium's own logging verbosity
+    opts.add_argument("--log-level=3")              # 0=INFO,1=WARNING,2=LOG_ERROR,3=LOG_FATAL
+    opts.add_argument("--disable-logging")
     opts.add_argument(f"user-agent={get_consistent_user_agent()}")
     
     # Enable performance logging for CDP event monitoring
