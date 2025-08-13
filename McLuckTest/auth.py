@@ -45,6 +45,9 @@ import os
 import time
 import logging
 from typing import Optional, Tuple
+import json
+import threading
+import json
 
 from dotenv import load_dotenv
 
@@ -523,7 +526,130 @@ def _switch_to_required_iframes(driver: WebDriver, outer_wait: int = 40, inner_w
 
 
 # ---------------------------------------------------------------------------
-# 5) Orchestration – main entry points
+# 5) CDP network capture – reconstruct curl for gamma API calls
+# ---------------------------------------------------------------------------
+def _build_curl_command(url: str, method: str, headers: dict, body: Optional[str]) -> str:
+    """
+    Build a curl command string using key headers in stable order.
+    Only includes headers that are present in the captured request.
+    """
+    wanted = [
+        'accept', 'accept-language', 'content-type', 'origin', 'priority', 'referer',
+        'sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform', 'sec-fetch-dest',
+        'sec-fetch-mode', 'sec-fetch-site', 'sec-fetch-storage-access', 'sec-gpc',
+        'user-agent', 'x-csrf-token'
+    ]
+    parts = ["curl", f"'{url}'"]
+    if method and method.upper() != 'GET':
+        parts.insert(1, "-X")
+        parts.insert(2, method.upper())
+    lower_headers = {k.lower(): v for k, v in (headers or {}).items()}
+    for key in wanted:
+        if key in lower_headers:
+            parts.append(f"-H '{key}: {lower_headers[key]}'")
+    if body:
+        try:
+            body_min = json.dumps(json.loads(body), separators=(',', ':'))
+        except Exception:
+            body_min = body
+        parts.append(f"--data-raw '{body_min}'")
+    return " \\\n+  ".join(parts)
+
+
+def enable_iframe_request_capture(driver: WebDriver) -> None:
+    """
+    Install JavaScript hooks inside the CURRENT FRAME (inner iframe) to record
+    fetch/XMLHttpRequest calls to bgaming-network.com and expose them via
+    window.__reqCapGet(). This avoids the performance-log approach.
+    """
+    js = """
+    (function(){
+      if (window.__reqCapInstalled) return;
+      window.__reqCapInstalled = true;
+      const queue = [];
+      function normHeaders(h){
+        const out = {};
+        if (!h) return out;
+        try { if (typeof h.forEach === 'function') { h.forEach((v,k)=>out[String(k).toLowerCase()]=String(v)); return out; } } catch(e){}
+        try { for (const k in h) { out[String(k).toLowerCase()] = String(h[k]); } } catch(e){}
+        return out;
+      }
+      function push(rec){ try{ queue.push(rec); if (queue.length>200) queue.shift(); }catch(e){} }
+      const ORIG_FETCH = window.fetch;
+      window.fetch = async function(input, init){
+        try {
+          const url = (input && input.url) ? input.url : (typeof input==='string'? input : '');
+          const method = (init && init.method) || (input && input.method) || 'GET';
+          const headers = normHeaders((init && init.headers) || (input && input.headers) || {});
+          const body = (init && typeof init.body==='string') ? init.body : '';
+          if (url && url.indexOf('bgaming-network.com') !== -1) {
+            push({type:'fetch', url, method, headers, body, ts: Date.now()});
+          }
+        } catch(e) {}
+        return ORIG_FETCH.apply(this, arguments);
+      };
+      const XHR = window.XMLHttpRequest;
+      const OPEN = XHR.prototype.open;
+      const SEND = XHR.prototype.send;
+      const SET = XHR.prototype.setRequestHeader;
+      XHR.prototype.open = function(m,u){ this.__m=m; this.__u=u; this.__h={}; return OPEN.apply(this, arguments); };
+      XHR.prototype.setRequestHeader = function(k,v){ try{ this.__h[String(k).toLowerCase()] = String(v); }catch(e){} return SET.apply(this, arguments); };
+      XHR.prototype.send = function(b){ try { const url=this.__u||''; const m=this.__m||'GET'; if (url.indexOf('bgaming-network.com')!==-1){ push({type:'xhr', url, method:m, headers:(this.__h||{}), body:(typeof b==='string'? b : ''), ts: Date.now()}); } } catch(e){} return SEND.apply(this, arguments); };
+      window.__reqCapGet = function(){ return queue.slice(); };
+      window.__reqCapClear = function(){ queue.length = 0; };
+    })();
+    """
+    try:
+        driver.execute_script(js)
+        driver._reqcap_enabled = True
+    except Exception as e:
+        log.warning("Failed to install iframe request capture: %s", e)
+
+
+def _start_background_capture_printer(driver: WebDriver, poll_interval: float = 0.5) -> None:
+    """
+    Start a lightweight background thread that polls window.__reqCapGet() inside
+    the inner iframe and prints a reconstructed curl for new requests.
+    """
+    def loop():
+        last_count = 0
+        while getattr(driver, "_reqcap_poll", True):
+            try:
+                items = driver.execute_script("return window.__reqCapGet && window.__reqCapGet();") or []
+                if len(items) > last_count:
+                    new_items = items[last_count:]
+                    for rec in new_items:
+                        url = rec.get('url','')
+                        if 'bgaming-network.com' not in url:
+                            continue
+                        method = rec.get('method','GET')
+                        headers = rec.get('headers', {}) or {}
+                        body = rec.get('body', '')
+                        curl_cmd = _build_curl_command(url, method, headers, body if body else None)
+                        driver._last_gamma_request = {
+                            'url': url,
+                            'method': method,
+                            'headers': headers,
+                            'body': body,
+                            'curl': curl_cmd,
+                        }
+                        print(curl_cmd)
+                    last_count = len(items)
+            except Exception:
+                pass
+            time.sleep(poll_interval)
+
+    try:
+        driver._reqcap_poll = True
+        t = threading.Thread(target=loop, daemon=True)
+        t.start()
+        driver._reqcap_thread = t
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# 6) Orchestration – main entry points
 # ---------------------------------------------------------------------------
 def launch_and_authenticate(mode: Optional[str] = None) -> WebDriver:
     """
@@ -571,6 +697,13 @@ def launch_and_authenticate(mode: Optional[str] = None) -> WebDriver:
 
     # Wait for nested iframes and switch into them, with a single retry path
     outer_ok, inner_ok = _switch_to_required_iframes(driver)
+    # Start JS-based capture in the inner iframe
+    if inner_ok:
+        try:
+            enable_iframe_request_capture(driver)
+            _start_background_capture_printer(driver)
+        except Exception:
+            pass
     if not (outer_ok and inner_ok):
         # Retry once after a brief wait and a sanity re-check of the page
         time.sleep(2.0)
@@ -582,6 +715,12 @@ def launch_and_authenticate(mode: Optional[str] = None) -> WebDriver:
         except Exception:
             pass
         outer_ok, inner_ok = _switch_to_required_iframes(driver)
+        if inner_ok:
+            try:
+                enable_iframe_request_capture(driver)
+                _start_background_capture_printer(driver)
+            except Exception:
+                pass
         if not (outer_ok and inner_ok):
             log.warning("Iframe switching incomplete after retry (outer_ok=%s, inner_ok=%s)", outer_ok, inner_ok)
 
