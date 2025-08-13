@@ -53,6 +53,7 @@ from dotenv import load_dotenv
 
 # Absolute imports per project rules
 from Auferstehung.driver_factory import create_stealth_driver
+from McLuckTest.game_state import GameState
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -75,7 +76,7 @@ def _quiet_external_logs() -> None:
     """
     try:
         logging.getLogger("selenium").setLevel(logging.WARNING)
-        logging.getLogger("urllib3").setLevel(logging.WARNING)
+        logging.getLogger("urllib3").setLevel(logging.ERROR)
         logging.getLogger("WDM").setLevel(logging.ERROR)  # webdriver-manager
         logging.getLogger("selenium.webdriver.remote.remote_connection").setLevel(logging.ERROR)
         logging.getLogger("Auferstehung").setLevel(logging.WARNING)
@@ -441,7 +442,10 @@ def _ensure_on_target_page(driver: WebDriver, target_url: str) -> None:
     where the site redirects to a lobby/dashboard after login.
     """
     try:
-        if not driver.current_url.startswith(target_url.split("?", 1)[0]):
+        current = driver.current_url
+        expected_base = target_url.split("?", 1)[0]
+        expected_path_hint = "/games/slots/aloha-king-elvis/"
+        if not current.startswith(expected_base) or expected_path_hint not in current:
             driver.get(target_url)
             _wait_for_cloudflare_and_app(driver, timeout=60)
     except Exception:
@@ -566,7 +570,9 @@ def enable_iframe_request_capture(driver: WebDriver) -> None:
     (function(){
       if (window.__reqCapInstalled) return;
       window.__reqCapInstalled = true;
-      const queue = [];
+      const done = [];
+      let __seq = 0;
+      function nextId(){ try{ return (++__seq); }catch(e){ return Date.now(); } }
       function normHeaders(h){
         const out = {};
         if (!h) return out;
@@ -574,7 +580,7 @@ def enable_iframe_request_capture(driver: WebDriver) -> None:
         try { for (const k in h) { out[String(k).toLowerCase()] = String(h[k]); } } catch(e){}
         return out;
       }
-      function push(rec){ try{ queue.push(rec); if (queue.length>200) queue.shift(); }catch(e){} }
+      function pushDone(rec){ try{ done.push(rec); }catch(e){} }
       const ORIG_FETCH = window.fetch;
       window.fetch = async function(input, init){
         try {
@@ -583,7 +589,22 @@ def enable_iframe_request_capture(driver: WebDriver) -> None:
           const headers = normHeaders((init && init.headers) || (input && input.headers) || {});
           const body = (init && typeof init.body==='string') ? init.body : '';
           if (url && url.indexOf('bgaming-network.com') !== -1) {
-            push({type:'fetch', url, method, headers, body, ts: Date.now()});
+            const rec = {id: nextId(), type:'fetch', url, method, headers, body, ts: Date.now()};
+            try {
+              const resp = await ORIG_FETCH.apply(this, arguments);
+              try {
+                const text = await resp.clone().text();
+                rec.response = {status: resp.status, headers: normHeaders(resp.headers), body: text};
+              } catch(e) {
+                rec.response = {status: resp.status, headers: {}, body: ''};
+              }
+              pushDone(rec);
+              return resp;
+            } catch(fetchErr) {
+              rec.response = {status: 0, headers: {}, body: ''};
+              pushDone(rec);
+              throw fetchErr;
+            }
           }
         } catch(e) {}
         return ORIG_FETCH.apply(this, arguments);
@@ -594,35 +615,58 @@ def enable_iframe_request_capture(driver: WebDriver) -> None:
       const SET = XHR.prototype.setRequestHeader;
       XHR.prototype.open = function(m,u){ this.__m=m; this.__u=u; this.__h={}; return OPEN.apply(this, arguments); };
       XHR.prototype.setRequestHeader = function(k,v){ try{ this.__h[String(k).toLowerCase()] = String(v); }catch(e){} return SET.apply(this, arguments); };
-      XHR.prototype.send = function(b){ try { const url=this.__u||''; const m=this.__m||'GET'; if (url.indexOf('bgaming-network.com')!==-1){ push({type:'xhr', url, method:m, headers:(this.__h||{}), body:(typeof b==='string'? b : ''), ts: Date.now()}); } } catch(e){} return SEND.apply(this, arguments); };
-      window.__reqCapGet = function(){ return queue.slice(); };
-      window.__reqCapClear = function(){ queue.length = 0; };
+      XHR.prototype.send = function(b){ try { const url=this.__u||''; const m=this.__m||'GET'; if (url.indexOf('bgaming-network.com')!==-1){ const rec={id: nextId(), type:'xhr', url, method:m, headers:(this.__h||{}), body:(typeof b==='string'? b : ''), ts: Date.now()}; this.addEventListener('loadend', function(){ try{ const text = (this.responseType===''||this.responseType==='text')? String(this.responseText||'') : ''; const status = Number(this.status||0); rec.response={status: status, headers:{}, body: text}; pushDone(rec); }catch(e){} }); } } catch(e){} return SEND.apply(this, arguments); };
+      window.__reqCapGet = function(){ return done.slice(); };
+      window.__reqCapClear = function(){ done.length = 0; };
+      window.__reqCapDrain = function(){ const out = done.slice(); done.length = 0; return out; };
     })();
     """
     try:
-        driver.execute_script(js)
+        # Ensure a per-driver reentrant lock exists for thread-safe JS execution
+        if not hasattr(driver, "_reqcap_lock"):
+            driver._reqcap_lock = threading.RLock()
+        with driver._reqcap_lock:
+            driver.execute_script(js)
         driver._reqcap_enabled = True
     except Exception as e:
         log.warning("Failed to install iframe request capture: %s", e)
 
 
-def _start_background_capture_printer(driver: WebDriver, poll_interval: float = 0.5) -> None:
+def _start_background_capture_printer(driver: WebDriver, poll_interval: float = None) -> None:
     """
     Start a lightweight background thread that polls window.__reqCapGet() inside
     the inner iframe and prints a reconstructed curl for new requests.
     """
+    # Allow tuning via environment; default 0.2s
+    if poll_interval is None:
+        try:
+            poll_ms = int(os.getenv("MCLUCK_CAPTURE_POLL_MS", "200").strip())
+            poll_interval = max(0.05, min(1.0, poll_ms / 1000.0))
+        except Exception:
+            poll_interval = 0.2
+
     def loop():
-        last_count = 0
         while getattr(driver, "_reqcap_poll", True):
             try:
-                items = driver.execute_script("return window.__reqCapGet && window.__reqCapGet();") or []
-                if len(items) > last_count:
-                    new_items = items[last_count:]
-                    for rec in new_items:
+                # Reinstall hook if iframe reloaded
+                with driver._reqcap_lock:
+                    installed = driver.execute_script("return !!(window.__reqCapInstalled);")
+                if not installed:
+                    try:
+                        enable_iframe_request_capture(driver)
+                    except Exception:
+                        pass
+
+                # Drain items atomically to avoid duplicates/misses
+                with driver._reqcap_lock:
+                    items = driver.execute_script("return (window.__reqCapDrain && window.__reqCapDrain()) || [];") or []
+                if items:
+                    for rec in items:
                         url = rec.get('url','')
-                        if 'bgaming-network.com' not in url:
+                        method = (rec.get('method','') or '').upper()
+                        # Only POSTs to the gamma API endpoint
+                        if 'gamma.bgaming-network.com/api/' not in url or method != 'POST':
                             continue
-                        method = rec.get('method','GET')
                         headers = rec.get('headers', {}) or {}
                         body = rec.get('body', '')
                         curl_cmd = _build_curl_command(url, method, headers, body if body else None)
@@ -634,7 +678,69 @@ def _start_background_capture_printer(driver: WebDriver, poll_interval: float = 
                             'curl': curl_cmd,
                         }
                         print(curl_cmd)
-                    last_count = len(items)
+                        # Surface CSRF-like tokens when present on the request
+                        try:
+                            csrf = None
+                            for key in ('x-csrf-token', 'x-xsrf-token', 'csrf-token'):
+                                if key in headers and headers[key]:
+                                    csrf = headers[key]
+                                    break
+                            if csrf:
+                                if getattr(driver, '_last_csrf_token', None) != csrf:
+                                    driver._last_csrf_token = csrf
+                                    print(f"[csrf] {csrf}")
+                        except Exception:
+                            pass
+                        # If this looks like the init call, log response (if captured)
+                        try:
+                            is_init = False
+                            parsed_request = None
+                            if body:
+                                try:
+                                    parsed_request = json.loads(body)
+                                    is_init = (parsed_request.get('command') == 'init')
+                                except Exception:
+                                    parsed_request = None
+                            if is_init:
+                                resp = rec.get('response') or {}
+                                status = resp.get('status')
+                                rbody = resp.get('body','')
+                                log.info("Init response status: %s", status)
+                                print(rbody)
+
+                                # Try to parse JSON and summarize key fields
+                                summary = {}
+                                try:
+                                    parsed = json.loads(rbody)
+                                    summary = {
+                                        'state': parsed.get('flow', {}).get('state'),
+                                        'available_actions': parsed.get('flow', {}).get('available_actions', []),
+                                        'round_id': parsed.get('flow', {}).get('round_id'),
+                                        'balance_wallet': parsed.get('balance', {}).get('wallet'),
+                                        'balance_game': parsed.get('balance', {}).get('game'),
+                                        'currency': parsed.get('options', {}).get('currency', {}).get('code'),
+                                        'default_bet': parsed.get('options', {}).get('default_bet'),
+                                    }
+                                    driver._last_init_response = {
+                                        'status': status,
+                                        'raw': parsed,
+                                        'summary': summary,
+                                    }
+                                    log.info("Init summary – state=%s, actions=%s, wallet=%s, game=%s, default_bet=%s %s",
+                                             summary.get('state'),
+                                             ','.join(summary.get('available_actions') or []),
+                                             summary.get('balance_wallet'),
+                                             summary.get('balance_game'),
+                                             summary.get('default_bet'),
+                                             summary.get('currency') or '')
+                                except Exception:
+                                    # Store raw text if JSON parsing fails
+                                    driver._last_init_response = {
+                                        'status': status,
+                                        'raw_text': rbody,
+                                    }
+                        except Exception:
+                            pass
             except Exception:
                 pass
             time.sleep(poll_interval)
